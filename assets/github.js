@@ -8,11 +8,16 @@
 window.GH = (function () {
   var LS_TOKEN = 'lifehub.token',
       LS_REPO  = 'lifehub.repo',
-      API      = 'https://api.github.com';
+      LS_SAVED = 'lifehub.tokenSavedAt',
+      LS_EXP   = 'lifehub.tokenExpiry',
+      API      = 'https://api.github.com',
+      DAY      = 86400000;
 
   var state = {
     token: localStorage.getItem(LS_TOKEN) || '',
     repo:  localStorage.getItem(LS_REPO) || 'knowlsaws/life-content',
+    savedAt: localStorage.getItem(LS_SAVED) || '',
+    expiry: localStorage.getItem(LS_EXP) || '',
     online: false,
     lastError: '',
     lastSync: null
@@ -20,8 +25,47 @@ window.GH = (function () {
 
   function setToken(t) {
     state.token = (t || '').trim();
-    if (state.token) localStorage.setItem(LS_TOKEN, state.token);
-    else localStorage.removeItem(LS_TOKEN);
+    if (state.token) {
+      localStorage.setItem(LS_TOKEN, state.token);
+      state.savedAt = new Date().toISOString();
+      localStorage.setItem(LS_SAVED, state.savedAt);
+      /* 期限はレスポンスヘッダで上書きされる。取れない場合の暫定値として
+       * fine-grained PAT の既定である 90 日を置いておく。 */
+      state.expiry = '';
+      localStorage.removeItem(LS_EXP);
+    } else {
+      localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_SAVED);
+      localStorage.removeItem(LS_EXP);
+      state.savedAt = ''; state.expiry = '';
+    }
+  }
+
+  /* 有効期限。GitHub は fine-grained PAT のとき
+   * github-authentication-token-expiration ヘッダを返すのでそれを正とし、
+   * 返らない場合だけ「保存日 + 90日」で補完する。 */
+  function expiryDate() {
+    if (state.expiry) { var d = new Date(state.expiry); if (!isNaN(d)) return d; }
+    if (state.savedAt) { var s = new Date(state.savedAt); if (!isNaN(s)) return new Date(s.getTime() + 90 * DAY); }
+    return null;
+  }
+  function daysLeft() {
+    var d = expiryDate();
+    if (!d) return null;
+    return Math.ceil((d.getTime() - Date.now()) / DAY);
+  }
+  function expiryIsExact() { return !!state.expiry; }
+
+  function captureExpiry(res) {
+    var h = res.headers.get('github-authentication-token-expiration');
+    if (!h) return;
+    /* 例: "2026-10-18 15:30:45 UTC" — Safari が解釈できるよう ISO へ寄せる */
+    var iso = h.trim().replace(' UTC', 'Z').replace(' ', 'T');
+    var d = new Date(iso);
+    if (isNaN(d)) d = new Date(h);
+    if (isNaN(d)) return;
+    state.expiry = d.toISOString();
+    localStorage.setItem(LS_EXP, state.expiry);
   }
   function setRepo(r) {
     state.repo = (r || '').trim();
@@ -54,6 +98,7 @@ window.GH = (function () {
     opts = opts || {};
     opts.headers = headers();
     return fetch(API + path, opts).then(function (r) {
+      captureExpiry(r);
       if (r.status === 401) throw new Error('トークンが無効です（401）');
       if (r.status === 403) throw new Error('権限またはレート制限（403）');
       if (r.status === 404) { var e = new Error('見つかりません（404）'); e.notFound = true; throw e; }
@@ -130,6 +175,7 @@ window.GH = (function () {
     state: state,
     setToken: setToken, setRepo: setRepo, hasToken: hasToken,
     getFile: getFile, getJSON: getJSON, putFile: putFile,
-    pushInbox: pushInbox, checkManifest: checkManifest, rateLimit: rateLimit
+    pushInbox: pushInbox, checkManifest: checkManifest, rateLimit: rateLimit,
+    expiryDate: expiryDate, daysLeft: daysLeft, expiryIsExact: expiryIsExact
   };
 })();

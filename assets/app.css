@@ -39,6 +39,14 @@
   .pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);animation:p 2.6s infinite}
   @keyframes p{0%{box-shadow:0 0 0 0 rgba(143,169,140,.45)}70%{box-shadow:0 0 0 7px rgba(143,169,140,0)}100%{box-shadow:0 0 0 0 rgba(143,169,140,0)}}
 
+  /* トークン期限などの警告バナー。暗めの琥珀で高級感を保ちつつ確実に気付ける */
+  .notice{flex:none;margin:2px 16px 0;display:flex;align-items:center;gap:9px;cursor:pointer;
+    border:1px solid rgba(207,164,92,.35);background:var(--goldd);color:var(--gold);
+    border-radius:11px;padding:10px 12px;font-size:12px;line-height:1.5;text-align:left;font-family:var(--font)}
+  .notice[hidden]{display:none}
+  .notice.crit{border-color:rgba(192,103,74,.45);background:var(--emberd);color:var(--ember)}
+  .notice svg{width:16px;height:16px;flex:none}
+  .notice .nx{margin-left:auto;color:var(--faint);font-size:15px;padding:0 2px}
   .sw{padding:6px 16px 10px;flex:none}
   .search{display:flex;align-items:center;gap:9px;border:1px solid var(--line2);border-radius:12px;
     background:var(--s1);padding:0 12px;height:42px;box-shadow:inset 0 1px 0 var(--hi)}

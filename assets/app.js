@@ -44,6 +44,9 @@ function dayLabel(d){var ds=fD(d);return ds+' ('+WK[d.getDay()]+')'+(HOL[ds]?' '
 /* データ源。PAT 未設定なら demo-data.js のサンプル、設定済みなら
  * private リポジトリ life-content の .web/*.json を読み込んだ結果が入る。 */
 var D=[], EV=[], DEMO_MODE=true;
+/* 挨拶文は life-content の .web/greeting.json から配信する。
+ * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
+var GREETING={text:''};
 
 var app=document.getElementById('app'),scroll=document.getElementById('scroll'),det=document.getElementById('det'),
  dBody=document.getElementById('dBody'),dSec=document.getElementById('dSec'),q=document.getElementById('q'),
@@ -148,7 +151,7 @@ function renderHome(){
     return h;
   }
   var ur=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
-  var h='<div class="greet"><div class="h">おはよう、こーすけ。『タイトルD』の配信日が 2026/10/05 に決まったみたいだよ。</div>'+
+  var h='<div class="greet"><div class="h">'+esc(GREETING.text||'')+'</div>'+
     '<div class="d">'+dayLabel(TODAY)+'</div></div>';
   h+='<div class="hero"><div class="ht"><span class="l">今日</span><span class="tag e">重要 3</span></div>'+
     '<div class="hr"><span class="t">14:00</span><span class="m">歯科 定期健診</span><span class="g">丸の内</span></div>'+
@@ -710,7 +713,9 @@ function setSync(txt,ok){
 }
 function useDemo(){
   D=DEMO.items.slice();EV=DEMO.events.slice();DEMO_MODE=true;
+  GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
+  if(noticeEl)noticeEl.hidden=true;
 }
 function loadAll(){
   return Promise.all(SECKEYS.map(function(k){
@@ -723,7 +728,11 @@ function loadAll(){
       (j.items||[]).forEach(function(it){it.s=it.s||k;items.push(it)});
       (j.events||[]).forEach(function(ev){events.push(ev)});
     });
-    D=items;EV=events;DEMO_MODE=false;render();
+    D=items;EV=events;DEMO_MODE=false;
+    return GH.getJSON('.web/greeting.json').catch(function(){return null});
+  }).then(function(g){
+    if(g&&g.text)GREETING=g;
+    render();updateNotice();
   });
 }
 var syncing=false;
@@ -736,7 +745,10 @@ function sync(){
     setSync('同期済み',true);
   }).catch(function(e){
     setSync(e.message.indexOf('401')>-1?'認証エラー':'未接続',false);
-  }).then(function(){syncing=false});
+  }).then(function(){
+    /* 期限切れで同期が落ちている時こそ通知が要るので、成否にかかわらず評価する */
+    syncing=false;updateNotice();
+  });
 }
 
 function openSettings(){
@@ -778,11 +790,43 @@ function openSettings(){
     GH.setToken('');mask.classList.remove('show');useDemo();
   };
 }
+
+/* ---- トークン期限の通知 -------------------------------------------------
+ * fine-grained PAT は既定 90 日で失効する。切れると同期が止まって気付きにくいので、
+ * 残り 14 日を切ったら上部に常時表示する。
+ */
+var noticeEl=document.getElementById('notice');
+function fmtDay(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate())}
+function updateNotice(){
+  if(!noticeEl)return;
+  if(!GH.hasToken()){noticeEl.hidden=true;return}
+  var left=GH.daysLeft(),exp=GH.expiryDate();
+  if(left===null||left>14){noticeEl.hidden=true;return}
+  if(localStorage.getItem('lifehub.noticeDismissed')===String(left)){noticeEl.hidden=true;return}
+  noticeEl.className='notice'+(left<=3?' crit':'');
+  noticeEl.innerHTML=
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'+
+    '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>'+
+    '<span>'+(left<=0
+      ? 'アクセストークンが失効しました。再発行して接続設定から登録してください。'
+      : 'アクセストークンがあと <b>'+left+'日</b>で失効します（'+fmtDay(exp)+'）。'+
+        (GH.expiryIsExact()?'':'※保存日からの推定')+'<br>タップで接続設定を開きます。')+'</span>'+
+    '<span class="nx" id="noticeX" role="button" aria-label="閉じる">×</span>';
+  noticeEl.hidden=false;
+  noticeEl.onclick=function(ev){
+    if(ev.target.id==='noticeX'){
+      localStorage.setItem('lifehub.noticeDismissed',String(left));
+      noticeEl.hidden=true;return;
+    }
+    openSettings();
+  };
+}
 document.getElementById('syncBtn').onclick=openSettings;
 
 if(GH.hasToken()){
   setSync('接続中…',false);
   D=[];EV=[];render();
+  updateNotice();
   sync();
 }else{
   useDemo();
