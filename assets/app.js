@@ -47,6 +47,36 @@ var D=[], EV=[], DEMO_MODE=true;
 /* 挨拶文は life-content の .web/greeting.json から配信する。
  * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
 var GREETING={text:''};
+/* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
+ * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
+ * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
+var STATE={},stateTimer=null;
+function stateKey(x){return x.id||(x.s+'|'+x.t)}
+function applyState(){
+  D.forEach(function(x){
+    var st=STATE[stateKey(x)];if(!st)return;
+    if(st.read){x.nw=0;if(x.s==='mail')x.unread=0}
+    if(st.st)x.st=st.st;
+    if(st.myRate!=null)x.myRate=st.myRate;
+    if(st.myNote!=null)x.myNote=st.myNote;
+    if(st.eps&&x.d&&x.d.eps){
+      x.d.eps.forEach(function(e){if(st.eps[e.n]!==undefined)e.on=!!st.eps[e.n]});
+      if(x.d.prog)x.d.prog[0]=x.d.eps.filter(function(e){return e.on}).length;
+    }
+  });
+}
+function touchState(x,patch){
+  var k=stateKey(x),cur=STATE[k]||{};
+  for(var p in patch)cur[p]=patch[p];
+  STATE[k]=cur;
+  if(DEMO_MODE)return;
+  clearTimeout(stateTimer);
+  stateTimer=setTimeout(function(){
+    GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
+               'state: ユーザー編集を保存 [skip ci]')
+      .catch(function(){setSync('保存失敗',false)});
+  },1200);
+}
 
 var app=document.getElementById('app'),scroll=document.getElementById('scroll'),det=document.getElementById('det'),
  dBody=document.getElementById('dBody'),dSec=document.getElementById('dSec'),q=document.getElementById('q'),
@@ -316,7 +346,7 @@ function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
   if(x.s==='mail')x.unread=0;
-  x.nw=0;
+  if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';
   var h='';
@@ -376,6 +406,12 @@ function showDetail(i){
   dBody.querySelectorAll('.chk').forEach(function(el){
     el.onclick=function(){
       el.classList.toggle('on');
+      if(d.eps){
+        var m={};dBody.querySelectorAll('.chk').forEach(function(c,ci){
+          if(d.eps[ci])m[d.eps[ci].n]=c.classList.contains('on');
+        });
+        touchState(x,{eps:m});
+      }
       var pgT=document.getElementById('pgT'),pgB=document.getElementById('pgB');
       if(pgT&&d.prog){
         var done=dBody.querySelectorAll('.chk.on').length;
@@ -385,6 +421,7 @@ function showDetail(i){
         var sel=document.getElementById('stSel'),nt=document.getElementById('autoNote');
         if(sel&&nt){
           if(v>=d.prog[1]){sel.value='✅ 視聴済み';x.st='done';x.tag='視聴済み';x.cls='';x.nw=0;
+            touchState(x,{st:'done'});
             nt.textContent='全話チェック完了 → ステータスを「視聴済み」に自動変更しました';}
           else nt.textContent='';
         }
@@ -397,6 +434,14 @@ function showDetail(i){
   dBody.querySelectorAll('[data-tag]').forEach(function(el){
     el.onclick=function(){goTag(el.getAttribute('data-tag'))};
   });
+  var stSel=document.getElementById('stSel');
+  if(stSel&&d.status)stSel.onchange=function(){
+    var i2=d.status.indexOf(stSel.value);
+    if(i2<0)return;
+    var codes=['upcoming','available','watching','done'];
+    x.st=codes[i2]||x.st;x.tag=d.status[i2].replace(/^\S+\s/,'');
+    touchState(x,{st:x.st});
+  };
   var stars=document.getElementById('myStars');
   if(stars)stars.querySelectorAll('[data-star]').forEach(function(el){
     el.onclick=function(){
@@ -404,10 +449,13 @@ function showDetail(i){
       stars.querySelectorAll('[data-star]').forEach(function(z){
         z.classList.toggle('on',+z.getAttribute('data-star')<=v)});
       document.getElementById('myRateV').textContent=v+' / 5';
+      touchState(x,{myRate:v});
     };
   });
   var note=document.getElementById('myNote');
-  if(note)note.addEventListener('input',function(){x.myNote=note.value});
+  if(note)note.addEventListener('input',function(){
+    x.myNote=note.value;touchState(x,{myNote:note.value});
+  });
 }
 function hideDetail(){det.classList.remove('show');det.setAttribute('aria-hidden','true');dTrash.style.display='none'}
 document.getElementById('backBtn').onclick=histBack;
@@ -729,9 +777,14 @@ function loadAll(){
       (j.events||[]).forEach(function(ev){events.push(ev)});
     });
     D=items;EV=events;DEMO_MODE=false;
-    return GH.getJSON('.web/greeting.json').catch(function(){return null});
-  }).then(function(g){
-    if(g&&g.text)GREETING=g;
+    return Promise.all([
+      GH.getJSON('.web/greeting.json').catch(function(){return null}),
+      GH.getJSON('.web/state.json').catch(function(){return null})
+    ]);
+  }).then(function(res){
+    if(res[0]&&res[0].text)GREETING=res[0];
+    STATE=res[1]||{};
+    applyState();
     render();updateNotice();
   });
 }
