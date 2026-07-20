@@ -85,11 +85,16 @@ var app=document.getElementById('app'),scroll=document.getElementById('scroll'),
  actzone=document.getElementById('actzone'),bottombar=document.getElementById('bottombar'),
  dTrash=document.getElementById('dTrash');
 var view='home',query='',queryRaw='',mailRead=false,seg={},curTag='',curDet=null;
+/* この画面で開いて既読にしたメール。未読フィルタ中でも消さずに残す。 */
+var sessionRead={};
 var hist=[{view:'home',tag:'',det:null}],hpos=0,navLock=false;
 function curState(){return {view:view,tag:curTag,det:curDet}}
 function pushHist(){
   if(navLock)return;
   hist=hist.slice(0,hpos+1);hist.push(curState());hpos=hist.length-1;
+  /* 詳細を開く経路は render() を通らないので、ここで下バーを更新しないと
+     「戻る」が無効のまま押せなくなる。 */
+  renderBottom();
 }
 function applyState(s){
   navLock=true;
@@ -222,7 +227,9 @@ function renderTag(){
 }
 
 function renderMail(){
-  var items=sortItems(D.filter(function(x){return x.s==='mail'&&match(x)&&(mailRead||x.unread)}),'mail');
+  var items=sortItems(D.filter(function(x){
+    return x.s==='mail'&&match(x)&&(mailRead||x.unread||sessionRead[stateKey(x)]);
+  }),'mail');
   var unread=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var act='<div class="segs"><button class="seg '+(mailRead?'':'on')+'" data-mail="0">未読のみ '+unread+'</button>'+
     '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>';
@@ -345,7 +352,7 @@ function bodyHead(s){return s==='mail'?'AI 要約':s==='meal'?'AI アドバイ�
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
-  if(x.s==='mail')x.unread=0;
+  if(x.s==='mail'){if(x.unread)sessionRead[stateKey(x)]=1;x.unread=0}
   if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';
@@ -598,7 +605,9 @@ function bind(){
     root.querySelectorAll('[data-seg]').forEach(function(el){el.onclick=function(){
       var p=el.getAttribute('data-seg').split(':');seg[p[0]]=p[1];render()}});
     root.querySelectorAll('[data-mail]').forEach(function(el){el.onclick=function(){
-      mailRead=el.getAttribute('data-mail')==='1';render()}});
+      mailRead=el.getAttribute('data-mail')==='1';
+      if(mailRead)sessionRead={};
+      render()}});
     root.querySelectorAll('[data-form]').forEach(function(el){el.onclick=function(){openForm(el.getAttribute('data-form'))}});
     root.querySelectorAll('[data-ev]').forEach(function(el){el.onclick=function(){openEvent(el.getAttribute('data-ev'))}});
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){openForm('event')}});
