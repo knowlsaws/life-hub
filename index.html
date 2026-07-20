@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0C">
+<title>LIFE</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="stage">
+  <div class="app" id="app">
+    <div class="hint" aria-hidden="true"></div>
+    <header class="topbar">
+      <button class="ib" id="menuBtn" aria-label="メニューを開く">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="brand" id="brand"></div>
+      <button class="sync" id="syncBtn" aria-label="接続状態"><span class="pulse" id="pulse"></span><span id="syncTxt">未接続</span></button>
+    </header>
+    <div class="sw">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" autocomplete="off" aria-label="検索">
+        <span class="clr" id="clr" style="display:none" role="button" aria-label="クリア">×</span>
+      </div>
+      <div class="tagsug" id="tagsug" style="display:none"></div>
+    </div>
+    <div class="actzone" id="actzone"></div>
+    <div class="scroll" id="scroll"></div>
+    <nav class="bottombar" id="bottombar" aria-label="ナビゲーション"></nav>
+    <div class="scrim" id="scrim"></div>
+    <nav class="drawer" id="drawer" aria-label="メニュー"><div class="dh2"><span class="d"></span><span class="w">LIFE</span></div><div id="menu"></div></nav>
+    <section class="det" id="det" aria-hidden="true">
+      <div class="db"><button class="ib" id="backBtn" aria-label="戻る">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button><span class="dt" id="dSec"></span>
+      <button class="ib" id="dTrash" aria-label="削除" style="display:none;color:var(--ember)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>
+      </button></div>
+      <div class="dbody" id="dBody"></div>
+    </section>
+    <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
+  </div>
+</div>
+<script src="assets/github.js"></script>
+<script src="assets/places.js"></script>
+<script src="assets/demo-data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
