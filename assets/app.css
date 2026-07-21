@@ -179,7 +179,8 @@
   .plist button:hover{background:var(--s2)}
   .plist .pn{font-size:13px;color:var(--text)}
   .plist .pa{font-size:10.5px;color:var(--faint)}
-  .cbrow{display:flex;gap:10px;align-items:center}
+  .cbrow{display:flex;gap:10px;align-items:center;min-width:0}
+  .cbrow input[type=time]{flex:1;min-width:0}
   .cbrow label{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);white-space:nowrap;cursor:pointer}
   .cbrow input[type=checkbox]{width:18px;height:18px;accent-color:#CFA45C;flex:none}
   input:disabled{opacity:.4}
@@ -247,8 +248,13 @@
   .chk .lb{flex:1;min-width:0}
   /* 16px 未満だと iOS がフォーカス時に自動ズームするため、入力欄は 16px を下回らせない */
   select,input[type=text],input[type=time],input[type=date],input[type=number],
-  input[type=password],input[type=search]{width:100%;background:var(--s2);color:var(--text);
+  input[type=password],input[type=search]{width:100%;max-width:100%;min-width:0;box-sizing:border-box;
+    background:var(--s2);color:var(--text);
     border:1px solid var(--line2);border-radius:10px;padding:10px 11px;font-size:16px;font-family:var(--font);outline:0}
+  /* iOS の date/time は既定の内在幅が広く、枠を押し広げてしまう */
+  input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block}
+  input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+  .sheet{overflow-x:hidden}
   label.fl{display:block;font-size:10.5px;color:var(--dim);margin:11px 0 5px}
   .bar{height:4px;border-radius:4px;background:var(--s3);overflow:hidden;margin-top:8px}
   .bar i{display:block;height:100%;background:var(--gold);border-radius:4px}

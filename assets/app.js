@@ -51,6 +51,7 @@ var D=[], EV=[], DEMO_MODE=true;
 /* 挨拶文は life-content の .web/greeting.json から配信する。
  * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
 var GREETING={text:''};
+var MANIFEST={sections:{}};
 /* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
  * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
@@ -73,7 +74,7 @@ function touchState(x,patch){
   var k=stateKey(x),cur=STATE[k]||{};
   for(var p in patch)cur[p]=patch[p];
   STATE[k]=cur;
-  if(DEMO_MODE)return;
+  if(!GH.hasToken())return;
   clearTimeout(stateTimer);
   stateTimer=setTimeout(function(){
     GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
@@ -198,17 +199,52 @@ function renderHome(){
   var ur=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var h='<div class="greet"><div class="h">'+esc(GREETING.text||'')+'</div>'+
     '<div class="d">'+dayLabel(TODAY)+'</div></div>';
-  h+='<div class="hero"><div class="ht"><span class="l">今日</span><span class="tag e">重要 3</span></div>'+
-    '<div class="hr"><span class="t">14:00</span><span class="m">歯科 定期健診</span><span class="g">丸の内</span></div>'+
-    '<div class="hr"><span class="t">19:30</span><span class="m">『君の名は。』配信開始</span><span class="g">Netflix</span></div>'+
-    '<div class="hr"><span class="t">—</span><span class="m">未読メール '+ur+'件</span><span class="g">'+(ur?'要確認':'なし')+'</span></div></div>';
+  // 今日の予定・タスクを実データから拾う（DAY → TASK → 時間順）
+  var td=fD(TODAY);
+  var todays=EV.filter(function(e){return e.d===td}).sort(function(a,b){
+    var o=evOrder(a)-evOrder(b);return o||(a.time||'').localeCompare(b.time||'');
+  });
+  var over=EV.filter(function(e){return e.type==='task'&&e.d<td});
+  h+='<div class="hero"><div class="ht"><span class="l">今日</span>'+
+    (ur?'<span class="tag e">未読 '+ur+'</span>':'')+'</div>';
+  todays.slice(0,4).forEach(function(e){
+    h+='<div class="hr"><span class="t">'+(e.allday?'DAY':(e.type==='task'?'TASK':esc(e.time)))+'</span>'+
+      '<span class="m">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span>'+
+      '<span class="g">'+esc(e.place||e.who||'')+'</span></div>';
+  });
+  if(over.length)
+    h+='<div class="hr"><span class="t">⚠️</span><span class="m">期限切れのタスク '+over.length+'件</span>'+
+       '<span class="g">要対応</span></div>';
+  if(ur)h+='<div class="hr"><span class="t">—</span><span class="m">未読メール '+ur+'件</span>'+
+    '<span class="g">要確認</span></div>';
+  if(!todays.length&&!over.length&&!ur)
+    h+='<div class="hr"><span class="t">—</span><span class="m">今日の予定はありません</span><span class="g"></span></div>';
+  h+='</div>';
   h+='<div class="sechead"><span class="n">セクション</span><span class="c">manifest 監視中</span></div><div class="grid">';
-  var meta={mail:['未読 '+ur+' · AI分析済','2026/07/20 09:12'],schedule:['今日 3件 · 次 14:00','2026/07/20 08:00'],
-    anime:['今期 8作 追跡中','2026/07/20 06:00'],tv:['追跡 5作','2026/07/20 06:40'],
-    movies:['公開待ち 3 · 今夜 1','2026/07/20 06:20'],meal:['今日 1,140 kcal','2026/07/20 12:40'],
-    news:['朝刊 12本 · 追跡 15','2026/07/20 07:00'],search:['調査 3 · 自動 2','2026/07/20 13:10']};
+  // タイルの件数と最終更新も実データから出す（固定文言を残さない）
+  function secStat(k){
+    var xs=D.filter(function(x){return x.s===k&&!x.gone});
+    // 作品の time は配信日なので「最終更新」には使えない。manifest の値を使う。
+    var upd=((MANIFEST.sections||{})[k]||{}).updated||'';
+    var nw=newCount(k);
+    if(k==='schedule'){
+      var c=EV.filter(function(e){return e.d===td}).length;
+      var nx=EV.filter(function(e){return e.d===td&&e.type!=='task'&&e.time&&e.time!=='—'})[0];
+      return ['今日 '+c+'件'+(nx?' · 次 '+nx.time:''), EV.length+' 件登録'];
+    }
+    if(k==='meal'){
+      var kc=0;
+      D.forEach(function(x){
+        if(x.s!=='meal')return;
+        var e=((x.d||{}).kv||[]).filter(function(r){return r[0]==='エネルギー'})[0];
+        if(e&&String(x.time).slice(0,10)===td)kc+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;
+      });
+      return ['今日 '+kc.toLocaleString()+' kcal', upd||'—'];
+    }
+    return [xs.length+' 件'+(nw?' · 新着 '+nw:''), upd||'—'];
+  }
   SEC.forEach(function(s){
-    var m=meta[s.k];
+    var m=secStat(s.k);
     h+='<button class="tile" data-sec="'+s.k+'">'+(newCount(s.k)?'<span class="dot"></span>':'')+
       '<span class="tp">'+ic(s.k,'ico')+'</span><span class="nm">'+s.n+'</span>'+
       '<span class="mt">'+m[0]+'</span><span class="ft">'+m[1]+'</span></button>';
@@ -290,10 +326,12 @@ function renderSchedule(){
       '<span class="wx">'+wxs(w)+'</span></div>';
     if(evs.length){
       out+='<div class="ev">'+evs.map(function(e){
+        var mark=e.failed?'<span class="ew" style="color:var(--ember)">送信失敗</span>'
+                :(e.pending?'<span class="ew">送信中…</span>':'');
         return '<button class="e1" data-ev="'+e.id+'"><span class="et">'+
           (e.allday?'DAY':(e.type==='task'?'TASK':e.time))+'</span>'+
           '<span class="en">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span>'+
-          '<span class="ew">'+esc(e.who&&e.who!=='—'?e.who:(e.over?'期限超過':''))+'</span></button>'}).join('')+'</div>';
+          (mark||'<span class="ew">'+esc(e.who&&e.who!=='—'?e.who:(e.over?'期限超過':''))+'</span>')+'</button>'}).join('')+'</div>';
     }
     out+='</div>';
     d.setDate(d.getDate()+1);
@@ -608,17 +646,23 @@ function openForm(k){
       if(payload[key]===undefined)payload[key]=v;
       else{if(!Array.isArray(payload[key]))payload[key]=[payload[key]];payload[key].push(v)}
     });
-    if(DEMO_MODE){
+    if(!GH.hasToken()){
       btn.textContent='デモモードです — 右上から接続設定を行ってください';
       setTimeout(function(){mask.classList.remove('show');btn.textContent='登録して GitHub に送信'},1800);
       return;
     }
-    btn.disabled=true;btn.textContent='送信中…';
+    // 先に画面へ反映して閉じ、GitHub への送信は裏で行う。
+    // 反映まで待たされると操作が重く感じるため。
+    var local=localEvent(k,payload);
+    mask.classList.remove('show');
+    if(local){EV.push(local);render();}
     GH.pushInbox(k,payload).then(function(){
-      btn.textContent='送信しました — Actions が処理します';
-      setTimeout(function(){mask.classList.remove('show')},1200);
+      if(local){local.pending=0;render();}
+      setSync('送信しました',true);
     }).catch(function(e){
-      btn.disabled=false;btn.textContent='送信に失敗: '+e.message;
+      if(local){local.failed=1;render();}
+      setSync('送信失敗',false);
+      notify('登録の送信に失敗しました（'+e.message+'）。通信を確認して再登録してください。',true);
     });
   };
 }
@@ -664,6 +708,24 @@ function renderBottom(){
   }
   document.getElementById('bbBack').disabled=!(hpos>0);
   document.getElementById('bbFwd').disabled=!(hpos<hist.length-1);
+}
+
+/* 送信前に画面へ出す仮の予定。GitHub 側の採番前なので id は一時的なもの。
+ * 次の同期でサーバー側の正データに置き換わる。 */
+function localEvent(kind,p){
+  if(kind!=='event'&&kind!=='task')return null;
+  var name=(p['予定名']||p['タスク名']||'').trim();
+  var raw=(p['締切']||p['日付']||'').trim();
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if(!name||!m)return null;
+  var allday=p['終日']===true||p['終日']==='true';
+  var t=(p['時間']||'').trim();
+  var rep=(p['繰り返し']||'').trim();
+  return {id:'local-'+Date.now(),d:m[1]+'/'+m[2]+'/'+m[3],n:name,
+    type:kind==='task'?'task':'event',
+    time:(kind==='task'||allday||!/^\d{1,2}:\d{2}$/.test(t))?'—':t,
+    place:(p['場所']||'').trim(),who:(p['一緒に遊ぶ人']||'').trim(),
+    allday:allday?1:0,rep:(rep&&rep!=='なし')?rep:'',src:'web',pending:1};
 }
 
 function openAddMenu(){
@@ -838,6 +900,7 @@ function sync(){
   if(!GH.hasToken()||syncing)return Promise.resolve();
   syncing=true;
   return GH.checkManifest().then(function(r){
+    if(r.manifest)MANIFEST=r.manifest;
     return r.changed?loadAll():null;
   }).then(function(){
     setSync('同期済み',true);
@@ -895,8 +958,21 @@ function openSettings(){
  */
 var noticeEl=document.getElementById('notice');
 function fmtDay(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate())}
-function updateNotice(){
+var noticeSticky=false;
+function notify(msg,crit){
   if(!noticeEl)return;
+  // 3秒ごとの同期が updateNotice() で書き換えてしまうため、
+  // 明示的に閉じるまで残す印を立てる
+  noticeSticky=true;
+  noticeEl.className='notice'+(crit?' crit':'');
+  noticeEl.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" '+
+    'stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>'+
+    '<span>'+esc(msg)+'</span><span class="nx" id="noticeX" role="button" aria-label="閉じる">×</span>';
+  noticeEl.hidden=false;
+  noticeEl.onclick=function(){noticeSticky=false;noticeEl.hidden=true;updateNotice()};
+}
+function updateNotice(){
+  if(!noticeEl||noticeSticky)return;
   if(!GH.hasToken()){noticeEl.hidden=true;return}
   var left=GH.daysLeft(),exp=GH.expiryDate();
   if(left===null||left>14){noticeEl.hidden=true;return}
