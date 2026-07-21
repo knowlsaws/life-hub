@@ -105,16 +105,40 @@ function linkTerms(escaped){
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
 var STATE={},stateTimer=null;
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
+// publish_works.py の STATUS_CODES / BADGE と対になっている。片方だけ変えないこと。
+var ST_CODES=['upcoming','available','watching','done'];
+var ST_BADGE={upcoming:['配信予定',''],available:['配信中',''],watching:['視聴中','g'],done:['視聴済み','']};
+function kvGet(d,k){var r=(d.kv||[]).filter(function(p){return p[0]===k})[0];return r?r[1]:''}
+function kvSet(d,k,v){(d.kv||[]).forEach(function(p){if(p[0]===k)p[1]=v})}
 function applyUserState(){
   D.forEach(function(x){
     var st=STATE[stateKey(x)];if(!st)return;
     if(st.read){x.nw=0;if(x.s==='mail')x.unread=0}
-    if(st.st)x.st=st.st;
     if(st.myRate!=null)x.myRate=st.myRate;
     if(st.myNote!=null)x.myNote=st.myNote;
+    // セクション JSON はパイプラインが作った時点の値なので、ユーザーが変えた
+    // ステータス・各話チェックはここで全て当て直す。x.st だけ直していた頃は
+    // 一覧のバッジ（tag/cls）と詳細のセレクト（statusI）が元に戻って見えた。
+    if(st.st){
+      x.st=st.st;
+      var b=ST_BADGE[st.st];if(b){x.tag=b[0];x.cls=b[1]}
+      var i=ST_CODES.indexOf(st.st);
+      if(i>-1&&x.d&&x.d.status){
+        x.d.statusI=i;
+        kvSet(x.d,'ステータス',x.d.status[i]);
+      }
+    }
     if(st.eps&&x.d&&x.d.eps){
       x.d.eps.forEach(function(e){if(st.eps[e.n]!==undefined)e.on=!!st.eps[e.n]});
-      if(x.d.prog)x.d.prog[0]=x.d.eps.filter(function(e){return e.on}).length;
+      var n=x.d.eps.filter(function(e){return e.on}).length,
+          tot=x.d.prog?x.d.prog[1]:0;
+      if(x.d.prog)x.d.prog[0]=n;
+      kvSet(x.d,'進捗',tot?n+' / '+tot+' 話':n+' 話 視聴済み');
+      // 一覧の補足行も publish_works.py と同じ組み立てにする（次に見る話 · 進捗）
+      var nx=x.d.eps.filter(function(e){return !e.on})[0];
+      var head=nx?nx.n+(nx.t?'「'+nx.t+'」':'')
+                 :(kvGet(x.d,'配信').split('（')[0]||String(x.m||'').split(' · ')[0]);
+      x.m=head+' · '+(tot?n+'/'+tot+'話':'視聴 '+n+'話');
     }
   });
 }
