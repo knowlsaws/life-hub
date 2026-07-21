@@ -33,7 +33,9 @@ var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニ
 function sn(k){for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
-var HOL={'2026/07/20':'海の日','2026/08/11':'山の日','2026/09/21':'敬老の日','2026/09/22':'国民の休日','2026/09/23':'秋分の日'};
+/* 祝日は life-content から配信される（vault の holidays.md ＋ 公開API）。
+ * ここに直書きすると期間外が抜けるため、既定は空にしておく。 */
+var HOL={};
 var WK=['日','月','火','水','木','金','土'];
 /* 天気は Open-Meteo（APIキー不要・無料・バックエンド不要）から取る。
  * 現在地は端末の位置情報。許可されない場合は天気を出さない。
@@ -1044,6 +1046,7 @@ function setSync(txt,ok){
 function useDemo(){
   D=DEMO.items.slice();EV=DEMO.events.slice();DEMO_MODE=true;
   TERMS=DEMO.terms||{};buildTermRe();
+  if(DEMO.holidays)HOL=DEMO.holidays;
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
   if(noticeEl)noticeEl.hidden=true;
@@ -1063,12 +1066,14 @@ function loadAll(){
     return Promise.all([
       GH.getJSON('.web/greeting.json').catch(function(){return null}),
       GH.getJSON('.web/state.json').catch(function(){return null}),
-      GH.getJSON('.web/terms.json').catch(function(){return null})
+      GH.getJSON('.web/terms.json').catch(function(){return null}),
+      GH.getJSON('.web/holidays.json').catch(function(){return null})
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=res[1]||{};
     TERMS=res[2]||{};buildTermRe();
+    if(res[3])HOL=res[3];
     applyUserState();
     render();updateNotice();
   });
