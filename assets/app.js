@@ -103,20 +103,65 @@ function linkTerms(escaped){
 /* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
  * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
-var STATE={},PENDING={},stateTimer=null;
+/* 書き込みが GitHub に届く前のリロード/離脱や一時的な失敗でも編集が消えないよう、
+ * 端末の localStorage に即キャッシュし、未同期分(PENDING)は再試行で送る。 */
+var LS_STATE='lifehub.state',LS_PENDING='lifehub.statePending';
+var STATE={},PENDING={},TOUCHED={},stateTimer=null,stateSaving=false,stateFails=0;
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
-/* リモートの state.json を取り込むときのマージ。編集直後は、書き込みがまだ
- * 反映されていない state.json が返ることがある（デバウンス前の同期・手動更新・
- * 書き込み直後の read）。そのまま上書きすると「更新したのに同期で元に戻る」ため、
- * 保存が未確定のローカル編集(PENDING)は守る。リモートがローカルと一致した
- * （保存が確定した）キーだけ PENDING を解除し、以後はリモートに追従する。 */
+
+function loadLocalState(){
+  try{
+    STATE=JSON.parse(localStorage.getItem(LS_STATE)||'{}')||{};
+    (JSON.parse(localStorage.getItem(LS_PENDING)||'[]')||[]).forEach(function(k){PENDING[k]=1;TOUCHED[k]=1});
+  }catch(e){STATE={}}
+}
+function persistLocal(){
+  try{
+    localStorage.setItem(LS_STATE,JSON.stringify(STATE));
+    localStorage.setItem(LS_PENDING,JSON.stringify(Object.keys(PENDING)));
+  }catch(e){}
+}
+
+/* リモート state.json の取り込み。取得失敗(null)なら手元を保持して消さない。
+ * この端末で編集したキー(TOUCHED)は常にローカルを優先し、同期の再取得・
+ * 書き込み前の read・取得遅延で編集が戻る／消えるのを防ぐ。触っていないキーは
+ * リモートに追従する（別端末の更新も反映）。 */
 function mergeRemoteState(remote){
-  remote=remote||{};
-  for(var k in PENDING){
-    if(JSON.stringify(remote[k])===JSON.stringify(STATE[k]))delete PENDING[k];
-    else remote[k]=STATE[k];
-  }
-  return remote;
+  if(!remote)return STATE;
+  var out={};
+  for(var k in remote)out[k]=remote[k];
+  for(var k in TOUCHED)if(STATE[k]!==undefined)out[k]=STATE[k];
+  return out;
+}
+
+function scheduleStateSave(delay){
+  clearTimeout(stateTimer);
+  stateTimer=setTimeout(saveState,delay);
+}
+/* 未保存の編集(PENDING)を state.json に書き出す。ページ離脱時にも呼ぶ。
+ * 失敗時は編集を握ったままバックオフで再試行し、勝手に諦めない。 */
+function saveState(){
+  clearTimeout(stateTimer);
+  if(!GH.hasToken()||stateSaving)return;
+  var writing=Object.keys(PENDING);
+  if(!writing.length)return;
+  var snap={};writing.forEach(function(k){snap[k]=JSON.stringify(STATE[k])});
+  stateSaving=true;
+  GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
+             'state: ユーザー編集を保存 [skip ci]')
+    .then(function(){
+      stateSaving=false;stateFails=0;
+      // 保存中に再編集されていないキーだけ確定（PENDING から外す）
+      writing.forEach(function(k){if(JSON.stringify(STATE[k])===snap[k])delete PENDING[k]});
+      persistLocal();
+      if(Object.keys(PENDING).length)scheduleStateSave(500);
+      else setSync('保存しました',true);
+    })
+    .catch(function(){
+      stateSaving=false;stateFails++;
+      setSync(stateFails>=3?'保存できません — 接続と権限を確認':'保存を再試行中…',false);
+      scheduleStateSave(Math.min(15000,1000*Math.pow(2,stateFails)));
+    });
 }
 // publish_works.py の STATUS_CODES / BADGE と対になっている。片方だけ変えないこと。
 var ST_CODES=['upcoming','available','watching','done'];
@@ -177,13 +222,9 @@ function touchState(x,patch){
   for(var p in patch)cur[p]=patch[p];
   STATE[k]=cur;
   if(!GH.hasToken())return;
-  PENDING[k]=1;   // 保存が確定するまで、同期の再取得で上書きされないよう守る
-  clearTimeout(stateTimer);
-  stateTimer=setTimeout(function(){
-    GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
-               'state: ユーザー編集を保存 [skip ci]')
-      .catch(function(){setSync('保存失敗',false)});
-  },1200);
+  TOUCHED[k]=1;PENDING[k]=1;
+  persistLocal();          // 即ローカル保存（リロード/離脱でも消えない）
+  scheduleStateSave(1200);
 }
 
 var app=document.getElementById('app'),scroll=document.getElementById('scroll'),det=document.getElementById('det'),
@@ -1266,7 +1307,7 @@ function loadAll(){
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
-    STATE=mergeRemoteState(res[1]);
+    STATE=mergeRemoteState(res[1]);persistLocal();
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     applyUserState();
@@ -1376,13 +1417,21 @@ function updateNotice(){
 document.getElementById('syncBtn').onclick=openSettings;
 
 if(GH.hasToken()){
+  loadLocalState();               // 未同期の編集を端末キャッシュから復元
   setSync('接続中…',false);
   D=[];EV=[];render();
   updateNotice();
   sync();
+  if(Object.keys(PENDING).length)scheduleStateSave(2500);  // 前回未送信分を送る
 }else{
   useDemo();
 }
 loadForecast();
 setInterval(sync,3000);
+/* ページを離れる/バックグラウンドに回る直前に未保存の編集を送り切る。
+ * デバウンス待ちのまま閉じても編集が消えないようにする。 */
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden')saveState();
+});
+window.addEventListener('pagehide',function(){saveState()});
 })();
