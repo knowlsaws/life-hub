@@ -136,6 +136,7 @@ function applyUserState(){
       kvSet(x.d,'進捗',tot?n+' / '+tot+' 話':n+' 話 視聴済み');
       // 一覧の補足行も publish_works.py と同じ組み立てにする（次に見る話 · 進捗）
       var nx=x.d.eps.filter(function(e){return !e.on})[0];
+      if(!nx)x.nw=0;              // 未視聴が無いなら新着ドットも消す
       var head=nx?nx.n+(nx.t?'「'+nx.t+'」':'')
                  :(kvGet(x.d,'配信').split('（')[0]||String(x.m||'').split(' · ')[0]);
       x.m=head+' · '+(tot?n+'/'+tot+'話':'視聴 '+n+'話');
