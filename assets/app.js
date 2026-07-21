@@ -404,7 +404,7 @@ function renderSchedule(){
                 :(e.pending?'<span class="ew">送信中…</span>':'');
         var chk=e.type==='task'
           ? '<span class="tick'+(e.done?' on':'')+'" data-done="'+e.id+'" role="button" '+
-            'aria-label="完了を切り替え">'+(e.done?'✓':'')+'</span>' : '';
+            'aria-label="完了を切り替え"></span>' : '';
         return '<button class="e1'+(e.done?' done':'')+'" data-ev="'+e.id+'"><span class="et">'+
           (e.allday?'DAY':(e.type==='task'?(e.done?'済':'TASK'):e.time))+'</span>'+
           chk+'<span class="en">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span>'+
