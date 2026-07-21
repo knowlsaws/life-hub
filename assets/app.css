@@ -32,6 +32,7 @@
   .ib{width:36px;height:36px;flex:none;display:grid;place-items:center;border:1px solid var(--line);
     border-radius:11px;background:var(--s1);color:var(--text);cursor:pointer;transition:.2s}
   .ib:hover{border-color:var(--line2);background:var(--s2)}
+  .ib.on{background:var(--goldd);border-color:rgba(207,164,92,.5);color:var(--gold)}
   .ib svg{width:18px;height:18px}
   .brand{flex:1;display:flex;align-items:baseline;gap:8px;min-width:0}
   .brand .w{font-family:var(--serif);font-size:21px;letter-spacing:.14em;font-weight:500}
@@ -172,6 +173,10 @@
   .day .e1.done .en{color:var(--faint);text-decoration:line-through}
   .day .e1.done .et{color:var(--ok)}
   .day .e1 .et{font-family:var(--mono);font-size:10px;color:var(--gold);flex:none;width:38px}
+  /* タスク名の左の完了チェック。タップ領域を確保しつつ控えめに */
+  .tick{flex:none;width:17px;height:17px;border-radius:5px;border:1px solid var(--line2);
+    background:var(--s2);display:grid;place-items:center;font-size:11px;color:transparent;cursor:pointer}
+  .tick.on{background:var(--goldd);border-color:rgba(207,164,92,.5);color:var(--gold)}
   .day .e1 .en{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .day .e1 .ew{font-size:9.5px;color:var(--faint);flex:none}
   .rep{color:var(--gold);font-size:11px}
