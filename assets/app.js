@@ -768,6 +768,29 @@ function autoc(input,sug,list){
   }
   input.addEventListener('input',upd);upd();
 }
+/* 写真は端末側で長辺を縮めて JPEG data URL 化してから送る。
+ * inbox は GitHub Contents API のコミットなので、原寸のままだと重すぎる。
+ * （パイプライン側でも添付時に再縮小するが、まず確実に送れる大きさにする） */
+function readImageDownscaled(file,maxEdge,quality){
+  return new Promise(function(resolve,reject){
+    var fr=new FileReader();
+    fr.onerror=function(){reject(new Error('読み込み失敗'))};
+    fr.onload=function(){
+      var img=new Image();
+      img.onerror=function(){reject(new Error('画像を解釈できません'))};
+      img.onload=function(){
+        var w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+        var s=Math.min(1,maxEdge/Math.max(w,h||1));
+        var cw=Math.max(1,Math.round(w*s)),ch=Math.max(1,Math.round(h*s));
+        var cv=document.createElement('canvas');cv.width=cw;cv.height=ch;
+        cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        try{resolve(cv.toDataURL('image/jpeg',quality))}catch(e){reject(e)}
+      };
+      img.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
 function mealRowHTML(n){
   return '<div class="card" style="margin-top:9px"><h4>食事 '+n+'</h4>'+
     '<label class="fl">料理 / 食材</label><input type="text" class="dishIn" data-k="料理" placeholder="入力して候補から選択" autocomplete="off">'+
@@ -777,6 +800,7 @@ function mealRowHTML(n){
 function openForm(k,prefill,opts){
   var F=FORMS[k];if(!F)return;
   prefill=prefill||{};opts=opts||{};
+  var photoData=[];   // 写真フォームで選ばれた画像（縮小済み data URL）
   var h='<h3>'+esc(F.h)+'</h3><div class="sh">'+esc(F.s)+'</div>';
   if(F.multi){
     h+='<div id="mealRows">'+mealRowHTML(1)+'</div>'+
@@ -795,7 +819,8 @@ function openForm(k,prefill,opts){
         '<label><input type="checkbox" id="alldayCb" data-k="終日"'+(prefill['終日']?' checked':'')+'> 終日</label></div>';
       else if(f[1]==='place')h+='<input type="text" id="placeIn" data-k="場所"'+va+' placeholder="'+esc(f[2])+'" autocomplete="off">'+
         '<div class="plist" id="placeSug" style="display:none"></div>';
-      else if(f[1]==='file')h+='<div class="fig" style="height:88px">画像をアップロード</div>';
+      else if(f[1]==='file')h+='<input type="file" id="photoIn" data-k="画像" accept="image/*" multiple style="width:100%;color:var(--dim);font-size:13px">'+
+        '<div class="fig" id="photoPrev" style="height:auto;min-height:72px;margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center">画像を選択してください</div>';
       else h+='<input type="'+f[1]+'"'+dk+va+' placeholder="'+esc(f[2])+'">';
     });
   }
@@ -844,16 +869,58 @@ function openForm(k,prefill,opts){
     rows.insertAdjacentHTML('beforeend',mealRowHTML(rows.children.length+1));
     wireDishes();
   };
+  var photoIn=document.getElementById('photoIn');
+  if(photoIn){
+    var photoPrev=document.getElementById('photoPrev');
+    photoIn.addEventListener('change',function(){
+      photoData=[];
+      var files=[].slice.call(photoIn.files||[]);
+      if(!files.length){photoPrev.textContent='画像を選択してください';return}
+      photoPrev.textContent='読み込み中…';
+      Promise.all(files.map(function(f){return readImageDownscaled(f,1600,0.82)}))
+        .then(function(urls){
+          photoData=urls;
+          photoPrev.innerHTML=urls.map(function(u){
+            return '<img src="'+u+'" alt="" style="height:64px;border-radius:8px">'}).join('');
+        })
+        .catch(function(){
+          photoData=[];
+          photoPrev.textContent='画像を読み込めませんでした（JPEG / PNG を選んでください）';
+        });
+    });
+  }
   document.getElementById('fCancel').onclick=function(){mask.classList.remove('show')};
   document.getElementById('fSubmit').onclick=function(){
     var btn=this,payload={};
-    sheet.querySelectorAll('[data-k]').forEach(function(el){
-      var key=el.getAttribute('data-k');
-      var v=el.type==='checkbox'?el.checked:el.value;
-      if(v===''||v===false)return;
-      if(payload[key]===undefined)payload[key]=v;
-      else{if(!Array.isArray(payload[key]))payload[key]=[payload[key]];payload[key].push(v)}
-    });
+    function flash(m){btn.textContent=m;setTimeout(function(){
+      btn.textContent=opts.editId?'変更を保存':'登録して GitHub に送信'},1600)}
+    if(F.multi){
+      // 食事フォーム: 各行を1食として meals 配列にまとめ、料理と量の対応を保つ。
+      // 体重は食事とは別枠。空行（料理・量とも空）は送らない。
+      var meals=[];
+      sheet.querySelectorAll('#mealRows .card').forEach(function(card){
+        var d1=card.querySelector('[data-k="料理"]'),d2=card.querySelector('[data-k="量"]');
+        var dish=(d1?d1.value:'').trim(),amt=(d2?d2.value:'').trim();
+        if(!dish&&!amt)return;
+        var row={};if(dish)row['料理']=dish;if(amt)row['量']=amt;meals.push(row);
+      });
+      if(meals.length)payload.meals=meals;
+      var wEl=sheet.querySelector('[data-k="体重"]'),wv=wEl?wEl.value.trim():'';
+      if(wv)payload['体重']=wv;
+      if(!payload.meals&&!payload['体重'])return flash('食材か体重を入力してください');
+    }else{
+      sheet.querySelectorAll('[data-k]').forEach(function(el){
+        if(el.type==='file')return;   // 画像は縮小済みの photoData を使う
+        var key=el.getAttribute('data-k');
+        var v=el.type==='checkbox'?el.checked:el.value;
+        if(v===''||v===false)return;
+        if(payload[key]===undefined)payload[key]=v;
+        else{if(!Array.isArray(payload[key]))payload[key]=[payload[key]];payload[key].push(v)}
+      });
+      if(photoData.length)payload['画像']=photoData.slice();
+      if(k==='photo'&&!(payload['画像']&&payload['画像'].length))
+        return flash('画像を選択してください');
+    }
     if(!GH.hasToken()){
       btn.textContent='デモモードです — 右上から接続設定を行ってください';
       setTimeout(function(){mask.classList.remove('show');btn.textContent='登録して GitHub に送信'},1800);
