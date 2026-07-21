@@ -486,6 +486,7 @@ function renderMeal(){
   var act='<div class="actbar"><button class="act" data-form="meal">'+ic('plus')+'食事を記録</button>'+
     '<button class="act" data-form="photo">'+ic('cam')+'写真で登録</button></div>';
   // 当日の摂取は記録から積む。目標は PROFILE 由来の値が無いので出さない。
+  var td=fD(TODAY);  // renderHome のローカル td は別スコープなので、ここで用意する
   var kcal=0,cnt=0;
   D.forEach(function(x){
     if(x.s!=='meal'||x.id==='meal-weight')return;
