@@ -204,8 +204,12 @@ function rowHTML(x,i){
    '<span class="r">'+badges(x)+'<span class="time">'+esc(x.time)+'</span></span></button>';
 }
 function posterHTML(x,i){
-  return '<button class="pc" data-i="'+i+'">'+(x.nw?'<span class="dot"></span>':'')+
-   '<span class="po">'+esc(x.d.poster||x.t.charAt(0))+'</span>'+
+  var img=(x.d||{}).img;
+  // 画像が取れない作品もあるので、失敗したら頭文字に戻す
+  var po=img?('<span class="po"><img src="'+esc(img)+'" alt="" loading="lazy" '+
+      'onerror="this.remove()"><span class="po-f">'+esc(x.d.poster||x.t.charAt(0))+'</span></span>')
+    :('<span class="po">'+esc(x.d.poster||x.t.charAt(0))+'</span>');
+  return '<button class="pc" data-i="'+i+'">'+(x.nw?'<span class="dot"></span>':'')+po+
    '<span class="pl"><span class="pt">'+esc(x.t)+'</span><span class="pm">'+esc(x.m)+'</span>'+
    '<span class="pr">'+(x.rate?'<span class="star">★ '+x.rate.toFixed(1)+'</span>':'<span class="star">★ —</span>')+
    badges(x)+'<span class="time">'+esc(x.time)+'</span></span></span></button>';
@@ -312,11 +316,15 @@ function renderHome(){
       '<span class="mt">'+m[0]+'</span><span class="ft">'+m[1]+'</span></button>';
   });
   h+='</div>';
-  h+='<div class="sechead"><span class="n">接続</span><span class="c">4</span></div><div class="conn">'+
-   '<button class="cr" id="photoRow">'+ic('photos')+'<span class="cn">Google フォト</span><span class="cs">タップでアプリ起動</span></button>'+
-   '<div class="cr">'+ic('claude')+'<span class="cn">Claude Code</span><span class="sd"></span><span class="cs">日次 18:00</span></div>'+
-   '<div class="cr">'+ic('github')+'<span class="cn">GitHub</span><span class="sd"></span><span class="cs">2026/07/20 13:10</span></div>'+
-   '<div class="cr">'+ic('line')+'<span class="cn">LINE</span><span class="sd"></span><span class="cs">通知 連携済</span></div></div>';
+  // 実際に確認できるのは GitHub の同期状態だけ。Claude Code と LINE は
+  // サイトから状態を取得する術が無いので、状態表示は載せない。
+  var gh=GH.hasToken()?((MANIFEST.generated||'—')):'未接続';
+  h+='<div class="sechead"><span class="n">接続</span></div><div class="conn">'+
+   '<button class="cr" id="photoRow">'+ic('photos')+'<span class="cn">Google フォト</span>'+
+     '<span class="cs">タップでアプリ起動</span></button>'+
+   '<button class="cr" id="ghRow">'+ic('github')+'<span class="cn">GitHub</span>'+
+     (GH.state.online?'<span class="sd"></span>':'')+
+     '<span class="cs">'+esc(gh)+'</span></button></div>';
   return h;
 }
 
@@ -407,25 +415,46 @@ function renderMeal(){
   var items=D.filter(function(x){return x.s==='meal'&&match(x)});
   var act='<div class="actbar"><button class="act" data-form="meal">'+ic('plus')+'食事を記録</button>'+
     '<button class="act" data-form="photo">'+ic('cam')+'写真で登録</button></div>';
+  // 当日の摂取は記録から積む。目標は PROFILE 由来の値が無いので出さない。
+  var kcal=0,cnt=0;
+  D.forEach(function(x){
+    if(x.s!=='meal'||x.id==='meal-weight')return;
+    if(String(x.time).slice(0,10)!==td)return;
+    var e=((x.d||{}).kv||[]).filter(function(r){return r[0]==='エネルギー'})[0];
+    if(e){kcal+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;cnt++}
+  });
+  var wItem=D.filter(function(x){return x.id==='meal-weight'})[0];
   var h='<div class="card"><h4>本日の摂取</h4>'+
-    '<div class="kv"><span class="k">摂取 / 目標</span><span class="v">1,140 / 2,280 kcal</span></div>'+
-    '<div class="bar"><i style="width:50%"></i></div>'+
-    '<div class="kv" style="margin-top:8px"><span class="k">体重</span><span class="v">62.4 kg（-0.3）</span></div></div>';
-  h+='<div class="card"><h4>体重推移と予測</h4>'+spark()+'</div>';
+    '<div class="kv"><span class="k">合計</span><span class="v">'+
+      (cnt?kcal.toLocaleString()+' kcal（'+cnt+'食）':'記録なし')+'</span></div>'+
+    (wItem?'<div class="kv"><span class="k">最新の体重</span><span class="v">'+
+      esc(((wItem.d||{}).kv||[]).filter(function(r){return r[0]==='体重'}).map(function(r){return r[1]})[0]||'—')+
+      '</span></div>':'')+'</div>';
+  if(wItem&&(wItem.d||{}).series)
+    h+='<div class="card"><h4>体重推移</h4>'+spark(wItem.d.series)+'</div>';
   h+='<div class="sechead"><span class="n">直近の記録</span><span class="c">'+items.length+' 件</span></div>'+
     '<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
   return {act:act,body:h};
 }
-function spark(){
-  var pts=[64.1,63.8,63.6,63.5,63.0,62.9,62.7,62.4],pred=[62.1,61.7,61.4,61.0,60.6,60.0];
-  var all=pts.concat(pred),mx=Math.max.apply(null,all),mn=Math.min.apply(null,all),W=330,H=76;
-  function xy(a,off){return a.map(function(v,i){
-    return ((i+off)/(all.length-1)*W).toFixed(1)+','+(H-(v-mn)/(mx-mn)*H).toFixed(1)}).join(' ')}
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:76px" role="img" aria-label="体重推移と予測">'+
-    '<polyline points="'+xy(pts,0)+'" fill="none" stroke="#CFA45C" stroke-width="1.6"/>'+
-    '<polyline points="'+xy(pred,pts.length-1)+'" fill="none" stroke="#67635A" stroke-width="1.4" stroke-dasharray="3 3"/>'+
-    '</svg><div class="kv" style="border-top:0;padding-top:6px"><span class="k">実測 62.4 kg</span>'+
-    '<span class="v">予測 60.0 kg / 2026/08/24</span></div>';
+/* 体重の折れ線。データはパイプラインが渡した実測値のみを描く。
+ * 予測線は出さない（根拠のある予測値を持っていないため）。 */
+function spark(series){
+  series=series||[];
+  if(series.length<2)
+    return '<p class="prose" style="color:var(--dim);font-size:12px">'+
+      (series.length?'記録が1件だけなのでグラフは表示できません。':'体重の記録がありません。')+'</p>';
+  var vs=series.map(function(p){return p[1]});
+  var mx=Math.max.apply(null,vs),mn=Math.min.apply(null,vs),W=330,H=76;
+  if(mx===mn){mx+=0.5;mn-=0.5}
+  var pts=series.map(function(p,i){
+    return (i/(series.length-1)*W).toFixed(1)+','+(H-(p[1]-mn)/(mx-mn)*H).toFixed(1)}).join(' ');
+  var first=series[0],last=series[series.length-1];
+  var diff=(last[1]-first[1]).toFixed(1);
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:76px" role="img" aria-label="体重推移">'+
+    '<polyline points="'+pts+'" fill="none" stroke="#CFA45C" stroke-width="1.6"/></svg>'+
+    '<div class="kv" style="border-top:0;padding-top:6px"><span class="k">'+
+    esc(first[0])+' 〜 '+esc(last[0])+'（'+series.length+'件）</span>'+
+    '<span class="v">'+last[1].toFixed(1)+' kg（'+(diff>0?'+':'')+diff+'）</span></div>';
 }
 
 function renderNews(){
@@ -437,10 +466,13 @@ function renderNews(){
     (cur==='all'||(cur==='story'?x.story:x.cat===cur))}),'news');
   var h='<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
   if(!items.length)h+='<div class="empty">該当するニュースはありません</div>';
-  h+='<div class="card" style="margin-top:12px"><h4>追跡中ストーリー</h4>'+
-    '<div class="kv"><span class="k">追跡中</span><span class="v">15 / 最低15件を維持</span></div>'+
-    '<div class="kv"><span class="k">1日の新規上限</span><span class="v">5 件</span></div>'+
-    '<div class="kv"><span class="k">不要にした話題</span><span class="v">別ニュースで補充</span></div></div>';
+  var stories=D.filter(function(x){return x.s==='news'&&x.story}).length;
+  var updated=((MANIFEST.sections||{}).news||{}).updated||'—';
+  h+='<div class="card" style="margin-top:12px"><h4>ニュースの状況</h4>'+
+    '<div class="kv"><span class="k">追跡中のストーリー</span><span class="v">'+stories+' 件</span></div>'+
+    '<div class="kv"><span class="k">掲載</span><span class="v">'+
+      D.filter(function(x){return x.s==='news'}).length+' 件</span></div>'+
+    '<div class="kv"><span class="k">最終更新</span><span class="v">'+esc(updated)+'</span></div></div>';
   return {act:act,body:h};
 }
 
@@ -449,10 +481,10 @@ function renderSearch(){
   var act='<div class="actbar"><button class="act" data-form="research">'+ic('plus')+'調べてほしい内容を登録</button></div>';
   var h='<div class="sechead"><span class="n">解説ページ</span><span class="c">'+items.length+' 件</span></div>'+
     '<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
-  h+='<div class="card" style="margin-top:12px"><h4>自動抽出</h4>'+
-    '<div class="kv"><span class="k">対象</span><span class="v">全メニューの直近項目</span></div>'+
-    '<div class="kv"><span class="k">今朝の抽出</span><span class="v">ニュース1 / 食事1</span></div>'+
-    '<div class="kv"><span class="k">用語ページ</span><span class="v">粒度を分割して自動生成</span></div></div>';
+  var nTerms=Object.keys(TERMS).length;
+  h+='<div class="card" style="margin-top:12px"><h4>用語辞書</h4>'+
+    '<div class="kv"><span class="k">登録語数</span><span class="v">'+nTerms+' 語</span></div>'+
+    '<div class="kv"><span class="k">使い方</span><span class="v">本文中の語をタップ</span></div></div>';
   return {act:act,body:h};
 }
 
@@ -467,7 +499,10 @@ function showDetail(i){
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';dEdit.style.display='none';
   var h='';
-  if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px"><span class="po" style="width:74px;height:106px;font-size:26px">'+esc(d.poster)+'</span>'+
+  if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px">'+
+    '<span class="po" style="width:74px;height:106px;font-size:26px">'+
+    (d.img?'<img src="'+esc(d.img)+'" alt="" loading="lazy" onerror="this.remove()">':'')+
+    '<span class="po-f">'+esc(d.poster)+'</span></span>'+
     '<span style="flex:1;min-width:0"><h1 class="dtitle" style="font-size:17px">'+esc(x.t)+'</h1>'+
     '<div class="dsub" style="margin-bottom:6px">'+esc(d.sub||'')+'</div>'+
     (x.rate?'<span class="star">★ '+x.rate.toFixed(1)+'</span>':'')+'</span></div>';
@@ -489,7 +524,7 @@ function showDetail(i){
   }
   if(d.kv)h+='<div class="card"><h4>詳細</h4>'+d.kv.map(function(r){
     return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>'}).join('')+'</div>';
-  if(d.graph)h+='<div class="card"><h4>体重推移と予測</h4>'+spark()+'</div>';
+  if(d.graph)h+='<div class="card"><h4>体重推移</h4>'+spark(d.series)+'</div>';
   if(d.fig)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
     '<div class="kv" style="border-top:0"><span class="k">形式</span><span class="v">初心者向け · 画像付き</span></div></div>';
   if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+linkTerms(esc(d.body))+'</p></div>';
@@ -799,6 +834,7 @@ function bind(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
   });
   var p=document.getElementById('photoRow');if(p)p.onclick=openPhotos;
+  var g=document.getElementById('ghRow');if(g)g.onclick=openSettings;
   var a=document.getElementById('askRow');if(a)a.onclick=function(){a.textContent='送信しました — Actions が調査を開始します';a.style.borderStyle='solid'};
 }
 

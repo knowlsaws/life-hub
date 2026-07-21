@@ -192,9 +192,12 @@
   .pc{position:relative;display:flex;gap:11px;width:100%;text-align:left;cursor:pointer;border:1px solid var(--line);
     border-radius:12px;background:var(--s1);padding:10px;box-shadow:inset 0 1px 0 var(--hi);font-family:var(--font)}
   .pc:hover{border-color:var(--line2);background:var(--s2)}
-  .po{width:52px;height:74px;border-radius:7px;flex:none;display:grid;place-items:center;
+  .po{position:relative;width:52px;height:74px;border-radius:7px;flex:none;display:grid;place-items:center;
     background:linear-gradient(150deg,#2A2A33,#15151A);border:1px solid var(--line2);
-    font-family:var(--serif);font-size:20px;color:var(--plat)}
+    font-family:var(--serif);font-size:20px;color:var(--plat);overflow:hidden}
+  /* 画像が載れば頭文字を隠す。読み込めなければ onerror で img が消え頭文字が残る */
+  .po img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+  .po-f{position:relative}
   .pc .pl{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
   .pc .pt{font-size:13.5px;line-height:1.35}
   .pc .pm{font-size:10.5px;color:var(--dim)}
