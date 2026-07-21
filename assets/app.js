@@ -109,6 +109,19 @@ function stateKey(x){return x.id||(x.s+'|'+x.t)}
 var ST_CODES=['upcoming','available','watching','done'];
 var ST_BADGE={upcoming:['配信予定',''],available:['配信中',''],watching:['視聴中','g'],done:['視聴済み','']};
 function kvGet(d,k){var r=(d.kv||[]).filter(function(p){return p[0]===k})[0];return r?r[1]:''}
+// publish_works.py の next_air と同じ規則。まだ配信されていない最初の話を返す。
+function isoToday(){var t=TODAY;return t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())}
+function nextAir(eps){
+  var iso=isoToday();
+  for(var i=0;i<eps.length;i++){
+    var e=eps[i];
+    if(e.air&&e.air>iso){
+      var m=/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(e.at||'');
+      return e.air.replace(/-/g,'/')+(m?' '+m[1]:'')+'（'+e.n+'）';
+    }
+  }
+  return '';
+}
 function kvSet(d,k,v){(d.kv||[]).forEach(function(p){if(p[0]===k)p[1]=v})}
 function applyUserState(){
   D.forEach(function(x){
@@ -134,11 +147,14 @@ function applyUserState(){
           tot=x.d.prog?x.d.prog[1]:0;
       if(x.d.prog)x.d.prog[0]=n;
       kvSet(x.d,'進捗',tot?n+' / '+tot+' 話':n+' 話 視聴済み');
-      // 一覧の補足行も publish_works.py と同じ組み立てにする（次に見る話 · 進捗）
+      // 一覧の補足行も publish_works.py と同じ組み立てにする
+      // （次回配信 → 次に見る話 → 配信サービス の優先順）
       var nx=x.d.eps.filter(function(e){return !e.on})[0];
       if(!nx)x.nw=0;              // 未視聴が無いなら新着ドットも消す
-      var head=nx?nx.n+(nx.t?'「'+nx.t+'」':'')
-                 :(kvGet(x.d,'配信').split('（')[0]||String(x.m||'').split(' · ')[0]);
+      var na=nextAir(x.d.eps),head;
+      if(na)head='次回 '+na;
+      else if(nx)head=nx.n+(nx.t?'「'+nx.t+'」':'');
+      else head=kvGet(x.d,'配信').split('（')[0]||String(x.m||'').split(' · ')[0];
       x.m=head+' · '+(tot?n+'/'+tot+'話':'視聴 '+n+'話');
     }
   });
