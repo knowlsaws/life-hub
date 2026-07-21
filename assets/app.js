@@ -379,6 +379,28 @@ function renderSchedule(){
     '<button class="act" data-form="task">'+ic('plus')+'タスク</button>'+
     '<button class="act" data-form="recurring">'+ic('plus')+'定期</button></div>';
   var h='';
+  var today=fD(TODAY);
+
+  /* 期限切れの未完了タスクは 62 日の表示範囲より前にあるため、
+   * そのままだと一覧に出ない。見落とすと困るので先頭にまとめる。 */
+  var over=EV.filter(function(e){
+    return e.type==='task'&&!e.done&&e.d<today&&
+      (!query||(e.n+' '+(e.place||'')+' '+(e.who||'')).toLowerCase().indexOf(query)>-1);
+  }).sort(function(a,b){return a.d<b.d?1:-1});
+  if(over.length){
+    h+='<div class="sechead"><span class="n" style="color:var(--ember)">期限切れ</span>'+
+       '<span class="c">'+over.length+' 件</span></div><div class="list">'+
+      over.map(function(e){
+        var days=Math.round((new Date(today.replace(/\//g,'-'))-new Date(e.d.replace(/\//g,'-')))/864e5);
+        return '<div class="day over"><div class="ev">'+
+          '<button class="e1" data-ev="'+e.id+'">'+
+          '<span class="et" style="color:var(--ember)">'+e.d.slice(5)+'</span>'+
+          '<span class="tick" data-done="'+e.id+'" role="button" aria-label="完了にする"></span>'+
+          '<span class="en">'+esc(e.n)+'</span>'+
+          '<span class="ew" style="color:var(--ember)">'+days+'日超過</span></button></div></div>';
+      }).join('')+'</div>';
+  }
+
   var d=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
   var out='',shown=0;
   for(var i=0;i<62;i++){
