@@ -168,6 +168,9 @@
   .day .e1{display:flex;gap:8px;font-size:11.5px;align-items:baseline;width:100%;text-align:left;
     background:none;border:0;border-radius:7px;padding:5px 6px;cursor:pointer;font-family:var(--font);color:var(--text)}
   .day .e1:hover{background:var(--s3)}
+  /* 完了済みタスクは残しつつ、済みと分かるように落とす */
+  .day .e1.done .en{color:var(--faint);text-decoration:line-through}
+  .day .e1.done .et{color:var(--ok)}
   .day .e1 .et{font-family:var(--mono);font-size:10px;color:var(--gold);flex:none;width:38px}
   .day .e1 .en{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .day .e1 .ew{font-size:9.5px;color:var(--faint);flex:none}

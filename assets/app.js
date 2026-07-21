@@ -35,13 +35,40 @@ function sn(k){for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;retu
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
 var HOL={'2026/07/20':'海の日','2026/08/11':'山の日','2026/09/21':'敬老の日','2026/09/22':'国民の休日','2026/09/23':'秋分の日'};
 var WK=['日','月','火','水','木','金','土'];
-var WX=[['☀️',31,10],['🌤',30,20],['☁️',28,30],['🌦',27,60],['🌧',25,80],['☀️',33,0]];
-function wx(i){
-  // 過去日は i が負になり、JS の % は負を返すため添字が壊れる。必ず正に丸める。
-  var n=WX.length,k=((i*7+3)%n+n)%n;
-  return WX[k];
+/* 天気は Open-Meteo（APIキー不要・無料・バックエンド不要）から取る。
+ * 現在地は端末の位置情報。許可されない場合は天気を出さない。
+ * 予報は 16 日先までなので、それ以降の日付には表示しない。 */
+var WX_CODE={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
+  61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'🌨',80:'🌦',81:'🌧',82:'🌧',95:'⛈',96:'⛈',99:'⛈'};
+var FORECAST={};       // 'YYYY/MM/DD' -> {icon, max, pop}
+var FORECAST_STATE='';  // '' | 'asking' | 'ok' | 'denied' | 'error'
+
+function wxs(d){
+  var f=FORECAST[d];
+  return f?(f.icon+' '+Math.round(f.max)+'° ☂'+f.pop+'%'):'';
 }
-function wxs(w){return w[0]+' '+w[1]+'° ☂'+w[2]+'%'}
+function loadForecast(){
+  if(FORECAST_STATE)return;
+  if(!navigator.geolocation){FORECAST_STATE='denied';return}
+  FORECAST_STATE='asking';
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var u='https://api.open-meteo.com/v1/forecast?latitude='+pos.coords.latitude.toFixed(3)+
+      '&longitude='+pos.coords.longitude.toFixed(3)+
+      '&daily=weather_code,temperature_2m_max,precipitation_probability_max'+
+      '&timezone=Asia%2FTokyo&forecast_days=16';
+    fetch(u).then(function(r){return r.json()}).then(function(j){
+      var t=(j.daily||{}).time||[];
+      t.forEach(function(day,i){
+        FORECAST[day.replace(/-/g,'/')]={
+          icon:WX_CODE[j.daily.weather_code[i]]||'·',
+          max:j.daily.temperature_2m_max[i],
+          pop:j.daily.precipitation_probability_max[i]
+        };
+      });
+      FORECAST_STATE='ok';render();
+    }).catch(function(){FORECAST_STATE='error'});
+  },function(){FORECAST_STATE='denied';render()},{timeout:8000,maximumAge:3600000});
+}
 function dayLabel(d){var ds=fD(d);return ds+' ('+WK[d.getDay()]+')'+(HOL[ds]?' '+HOL[ds]:'')}
 
 
@@ -223,7 +250,7 @@ function renderHome(){
   var todays=EV.filter(function(e){return e.d===td}).sort(function(a,b){
     var o=evOrder(a)-evOrder(b);return o||(a.time||'').localeCompare(b.time||'');
   });
-  var over=EV.filter(function(e){return e.type==='task'&&e.d<td});
+  var over=EV.filter(function(e){return e.type==='task'&&!e.done&&e.d<td});
   h+='<div class="hero"><div class="ht"><span class="l">今日</span>'+
     (ur?'<span class="tag e">未読 '+ur+'</span>':'')+'</div>';
   todays.slice(0,4).forEach(function(e){
@@ -241,15 +268,22 @@ function renderHome(){
   h+='</div>';
   h+='<div class="sechead"><span class="n">セクション</span><span class="c">manifest 監視中</span></div><div class="grid">';
   // タイルの件数と最終更新も実データから出す（固定文言を残さない）
+  /* タイルの文言はセクションごとに意味のある指標を出す。
+   * 総件数だけだと「メール6件」が未読数に見えてしまう。 */
   function secStat(k){
     var xs=D.filter(function(x){return x.s===k&&!x.gone});
-    // 作品の time は配信日なので「最終更新」には使えない。manifest の値を使う。
     var upd=((MANIFEST.sections||{})[k]||{}).updated||'';
     var nw=newCount(k);
+    if(k==='mail'){
+      var un=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
+      return [(un?'未読 '+un+' 件':'未読なし')+' · 全'+xs.length, upd||'—'];
+    }
     if(k==='schedule'){
-      var c=EV.filter(function(e){return e.d===td}).length;
+      var c=EV.filter(function(e){return e.d===td&&!e.done}).length;
+      var ov=EV.filter(function(e){return e.type==='task'&&!e.done&&e.d<td}).length;
       var nx=EV.filter(function(e){return e.d===td&&e.type!=='task'&&e.time&&e.time!=='—'})[0];
-      return ['今日 '+c+'件'+(nx?' · 次 '+nx.time:''), EV.length+' 件登録'];
+      return ['今日 '+c+'件'+(nx?' · 次 '+nx.time:'')+(ov?' · 期限切れ '+ov:''),
+              EV.length+' 件登録'];
     }
     if(k==='meal'){
       var kc=0;
@@ -258,7 +292,16 @@ function renderHome(){
         var e=((x.d||{}).kv||[]).filter(function(r){return r[0]==='エネルギー'})[0];
         if(e&&String(x.time).slice(0,10)===td)kc+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;
       });
-      return ['今日 '+kc.toLocaleString()+' kcal', upd||'—'];
+      return [kc?('今日 '+kc.toLocaleString()+' kcal'):'今日の記録なし', upd||'—'];
+    }
+    if(k==='anime'||k==='tv'||k==='movies'){
+      var w=xs.filter(function(x){return x.st==='watching'}).length;
+      var up=xs.filter(function(x){return x.st==='upcoming'}).length;
+      return [(w?'視聴中 '+w+' · ':'')+'配信予定 '+up+' · 全'+xs.length, upd||'—'];
+    }
+    if(k==='news'){
+      var st=xs.filter(function(x){return x.story}).length;
+      return [(nw?'新着 '+nw+' · ':'')+'追跡中 '+st+' · 全'+xs.length, upd||'—'];
     }
     return [xs.length+' 件'+(nw?' · 新着 '+nw:''), upd||'—'];
   }
@@ -327,7 +370,7 @@ function renderSchedule(){
   var d=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
   var out='',shown=0;
   for(var i=0;i<62;i++){
-    var ds=fD(d),dow=d.getDay(),hol=HOL[ds],w=wx(i);
+    var ds=fD(d),dow=d.getDay(),hol=HOL[ds];
     var evs=EV.filter(function(e){return e.d===ds});
     if(query){
       var hit=(ds+' '+(hol||'')+' '+evs.map(function(e){return e.n+' '+(e.who||'')+' '+(e.place||'')}).join(' ')).toLowerCase().indexOf(query)>-1;
@@ -342,13 +385,13 @@ function renderSchedule(){
     out+='<div class="'+cls+'"><div class="dh" data-addday="'+ds+'">'+
       '<span class="dd">'+ds+'</span><span class="dw">('+WK[dow]+')</span>'+
       (hol?'<span class="hol">'+hol+'</span>':'')+
-      '<span class="wx">'+wxs(w)+'</span></div>';
+      '<span class="wx">'+wxs(ds)+'</span></div>';
     if(evs.length){
       out+='<div class="ev">'+evs.map(function(e){
         var mark=e.failed?'<span class="ew" style="color:var(--ember)">送信失敗</span>'
                 :(e.pending?'<span class="ew">送信中…</span>':'');
-        return '<button class="e1" data-ev="'+e.id+'"><span class="et">'+
-          (e.allday?'DAY':(e.type==='task'?'TASK':e.time))+'</span>'+
+        return '<button class="e1'+(e.done?' done':'')+'" data-ev="'+e.id+'"><span class="et">'+
+          (e.allday?'DAY':(e.type==='task'?(e.done?'済':'TASK'):e.time))+'</span>'+
           '<span class="en">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span>'+
           (mark||'<span class="ew">'+esc(e.who&&e.who!=='—'?e.who:(e.over?'期限超過':''))+'</span>')+'</button>'}).join('')+'</div>';
     }
@@ -584,10 +627,10 @@ document.getElementById('backBtn').onclick=histBack;
 var DISHES=['牛丼@すき家','トースト@自宅','サラダ@自宅','カレー@自宅','ラーメン@一蘭','味噌汁@自宅','コーヒー@自宅','唐揚げ弁当@ほっともっと'];
 var FORMS={
  event:{h:'予定を登録',s:'AI が移動方法・天気・周辺スポットを自動で付加します',
-   f:[['予定名','text','歯科 定期健診'],['日付','date',''],
-      ['時間','timeall',''],['場所','place','場所を検索（例: 五）'],
-      ['一緒に遊ぶ人','text','田中さん'],['繰り返し','select','なし|毎日|毎週|毎月|毎年']]},
- task:{h:'タスクを登録',s:'締切だけのシンプル登録',f:[['タスク名','text','銀行振込'],['締切','date','']]},
+   f:[['予定名','text',''],['日付','date',''],
+      ['時間','timeall',''],['場所','place','入力すると候補が出ます'],
+      ['一緒に遊ぶ人','text',''],['繰り返し','select','なし|毎日|毎週|毎月|毎年']]},
+ task:{h:'タスクを登録',s:'締切だけのシンプル登録',f:[['タスク名','text',''],['締切','date','']]},
  meal:{h:'食事を記録',s:'複数の食事をまとめて登録できます。体重は未入力なら変化なし',multi:1},
  photo:{h:'写真で登録',s:'画像をアップロードすると AI が料理・食材・栄養素を解析します',
    f:[['画像','file',''],['メモ（任意）','text','すき家で昼食']]},
@@ -824,29 +867,34 @@ function openEvent(id){curDet={ev:id};pushHist();showEvent(id)}
 function showEvent(id){
   var e=findEv(id);
   if(!e){hideDetail();return}
-  var ds=e.d,dt=new Date(ds.replace(/\//g,'-')),hol=HOL[ds],
-      i=Math.round((dt-new Date(fD(TODAY).replace(/\//g,'-')))/864e5),w=wx(i);
+  var ds=e.d,dt=new Date(ds.replace(/\//g,'-')),hol=HOL[ds];
   var isTask=e.type==='task';
   dSec.textContent=isTask?'タスク':'予定';
   dTrash.style.display='grid';dEdit.style.display='grid';
   var h='<h1 class="dtitle">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</h1>';
-  h+='<div class="dsub">'+ds+' ('+WK[dt.getDay()]+')'+(hol?' '+hol:'')+' · '+wxs(w)+'</div>';
+  h+='<div class="dsub">'+ds+' ('+WK[dt.getDay()]+')'+(hol?' '+hol:'')+'</div>';
   h+='<div class="card"><h4>詳細</h4>'+
     '<div class="kv"><span class="k">種別</span><span class="v">'+(isTask?'タスク':'予定')+'</span></div>'+
     (isTask
       ? '<div class="kv"><span class="k">締切</span><span class="v">'+ds+'</span></div>'+
-        (e.over?'<div class="kv"><span class="k">状態</span><span class="v">⚠️ 期限超過</span></div>':'')
+        '<div class="kv"><span class="k">状態</span><span class="v">'+
+          (e.done?'✅ 完了':(e.over?'⚠️ 期限超過':'未完了'))+'</span></div>'
       : '<div class="kv"><span class="k">日時</span><span class="v">'+(e.allday?ds+' DAY（終日）':ds+' '+esc(e.time))+'</span></div>'+
         '<div class="kv"><span class="k">場所</span><span class="v">'+esc(e.place||'—')+'</span></div>'+
         '<div class="kv"><span class="k">一緒に遊ぶ人</span><span class="v">'+esc(e.who||'—')+'</span></div>'+
         (e.rep?'<div class="kv"><span class="k">繰り返し</span><span class="v">⟳ '+esc(e.rep)+'</span></div>':''))+
     (e.src?'<div class="kv"><span class="k">出典</span><span class="v">'+esc(e.src)+'</span></div>':'')+'</div>';
-  if(!isTask&&e.place&&e.place!=='—'){
-    h+='<div class="card"><h4>AI が付加した情報</h4>'+
-      '<div class="kv"><span class="k">移動方法</span><span class="v">東京駅から徒歩8分</span></div>'+
-      '<div class="kv"><span class="k">所要時間</span><span class="v">自宅から約35分</span></div>'+
-      '<div class="kv"><span class="k">現地の天気</span><span class="v">'+wxs(w)+'</span></div>'+
-      '<p class="prose" style="margin-top:9px">周辺のおすすめ: 老舗の喫茶店が徒歩3分。'+esc(e.place)+'の並びに書店があり、待ち時間に立ち寄れます。</p></div>';
+
+  /* 場所に基づく解析はパイプラインが生成して予定に持たせている。
+   * サイト側で作文はしない（実在しない情報を出さないため）。 */
+  if(e.ai&&e.ai.length){
+    e.ai.forEach(function(sec){
+      h+='<div class="card"><h4>'+esc(sec.h)+'</h4><p class="prose">'+linkTerms(esc(sec.b))+'</p></div>';
+    });
+  }else if(!isTask&&e.place&&e.place!=='—'){
+    h+='<div class="card"><h4>場所の情報</h4><p class="prose" style="color:var(--dim)">'+
+      esc(e.place)+' の天気・アクセス・周辺情報はまだ生成されていません。'+
+      '毎朝の自動更新で追記されます。</p></div>';
   }
   dBody.innerHTML=h;dBody.scrollTop=0;det.classList.add('show');det.setAttribute('aria-hidden','false');
   dTrash.onclick=function(){
@@ -1099,5 +1147,6 @@ if(GH.hasToken()){
 }else{
   useDemo();
 }
+loadForecast();
 setInterval(sync,3000);
 })();
