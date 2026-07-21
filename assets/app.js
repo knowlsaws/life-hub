@@ -103,8 +103,21 @@ function linkTerms(escaped){
 /* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
  * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
-var STATE={},stateTimer=null;
+var STATE={},PENDING={},stateTimer=null;
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
+/* リモートの state.json を取り込むときのマージ。編集直後は、書き込みがまだ
+ * 反映されていない state.json が返ることがある（デバウンス前の同期・手動更新・
+ * 書き込み直後の read）。そのまま上書きすると「更新したのに同期で元に戻る」ため、
+ * 保存が未確定のローカル編集(PENDING)は守る。リモートがローカルと一致した
+ * （保存が確定した）キーだけ PENDING を解除し、以後はリモートに追従する。 */
+function mergeRemoteState(remote){
+  remote=remote||{};
+  for(var k in PENDING){
+    if(JSON.stringify(remote[k])===JSON.stringify(STATE[k]))delete PENDING[k];
+    else remote[k]=STATE[k];
+  }
+  return remote;
+}
 // publish_works.py の STATUS_CODES / BADGE と対になっている。片方だけ変えないこと。
 var ST_CODES=['upcoming','available','watching','done'];
 var ST_BADGE={upcoming:['配信予定',''],available:['配信中',''],watching:['視聴中','g'],done:['視聴済み','']};
@@ -164,6 +177,7 @@ function touchState(x,patch){
   for(var p in patch)cur[p]=patch[p];
   STATE[k]=cur;
   if(!GH.hasToken())return;
+  PENDING[k]=1;   // 保存が確定するまで、同期の再取得で上書きされないよう守る
   clearTimeout(stateTimer);
   stateTimer=setTimeout(function(){
     GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
@@ -1252,7 +1266,7 @@ function loadAll(){
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
-    STATE=res[1]||{};
+    STATE=mergeRemoteState(res[1]);
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     applyUserState();
