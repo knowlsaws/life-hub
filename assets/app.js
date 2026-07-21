@@ -32,7 +32,7 @@ var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニ
   {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
-var TODAY=new Date(2026,6,20,9,0);
+var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
 var HOL={'2026/07/20':'海の日','2026/08/11':'山の日','2026/09/21':'敬老の日','2026/09/22':'国民の休日','2026/09/23':'秋分の日'};
 var WK=['日','月','火','水','木','金','土'];
 var WX=[['☀️',31,10],['🌤',30,20],['☁️',28,30],['🌦',27,60],['🌧',25,80],['☀️',33,0]];
@@ -52,7 +52,7 @@ var GREETING={text:''};
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
 var STATE={},stateTimer=null;
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
-function applyState(){
+function applyUserState(){
   D.forEach(function(x){
     var st=STATE[stateKey(x)];if(!st)return;
     if(st.read){x.nw=0;if(x.s==='mail')x.unread=0}
@@ -97,14 +97,20 @@ function pushHist(){
   renderBottom();
 }
 function applyState(s){
+  if(!s)return;
   navLock=true;
-  view=s.view;curTag=s.tag;curDet=s.det;
-  q.value='';query='';queryRaw='';clr.style.display='none';tagsug.style.display='none';
-  render();
-  if(s.det==null)hideDetail();
-  else if(typeof s.det==='number')showDetail(s.det);
-  else showEvent(s.det.ev);
-  navLock=false;renderBottom();
+  try{
+    view=s.view;curTag=s.tag;curDet=s.det;
+    q.value='';query='';queryRaw='';clr.style.display='none';tagsug.style.display='none';
+    render();
+    if(s.det==null)hideDetail();
+    else if(typeof s.det==='number')showDetail(s.det);
+    else showEvent(s.det.ev);
+  }finally{
+    // ここで戻し損ねると pushHist() が無効化され、以降ずっと「戻る」が効かなくなる
+    navLock=false;
+  }
+  renderBottom();
 }
 function histBack(){if(hpos>0){hpos--;applyState(hist[hpos])}}
 function histFwd(){if(hpos<hist.length-1){hpos++;applyState(hist[hpos])}}
@@ -383,15 +389,24 @@ function showDetail(i){
   if(d.fig)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
     '<div class="kv" style="border-top:0"><span class="k">形式</span><span class="v">初心者向け · 画像付き</span></div></div>';
   if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+esc(d.body)+'</p></div>';
-  if(d.cast)h+='<div class="card"><h4>キャスト（声優 / 役名）</h4>'+d.cast.map(function(c){
+  if(d.cast)h+='<div class="card"><h4>キャスト（役名 / 声優）</h4>'+d.cast.map(function(c){
     return '<div class="kv"><span class="k">'+esc(c[1])+'</span><span class="v">'+esc(c[0])+'</span></div>'}).join('')+'</div>';
   if(d.eps)h+='<div class="card"><h4>各話</h4>'+d.eps.map(function(e,n){
     return '<div class="chk'+(e.on?' on':'')+'" data-n="'+n+'"><span class="box">✓</span>'+
       '<span class="lb">'+esc(e.n)+'　'+esc(e.t)+'</span></div>'}).join('')+'</div>';
   if(d.nut)h+='<div class="card"><h4>栄養素（34種のうち抜粋 / 目安比）</h4><div class="nut">'+d.nut.map(function(r){
     return '<div><span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>'}).join('')+'</div></div>';
-  if(d.links)h+='<div class="card"><h4>登録された予定 / タスク</h4>'+d.links.map(function(l){
-    return '<div class="lnk">'+ic('link')+'<span style="flex:1">'+esc(l.t)+'</span><span class="v" style="font-family:var(--mono);font-size:11px;color:var(--faint)">'+esc(l.to)+'</span></div>'}).join('')+'</div>';
+  if(d.links){
+    // 見出しはセクションで意味が変わる（メール=登録先、ニュース/検索=出典）
+    var lt=d.linksTitle||(x.s==='mail'?'登録された予定 / タスク':'出典');
+    h+='<div class="card"><h4>'+esc(lt)+'</h4>'+d.links.map(function(l){
+      var isUrl=/^https?:\/\//.test(l.to||'');
+      var sub=isUrl?String(l.to).replace(/^https?:\/\//,''):esc(l.to||'');
+      return (isUrl?'<a class="lnk" href="'+esc(l.to)+'" target="_blank" rel="noopener">':'<div class="lnk">')+
+        ic('link')+'<span class="lnk-b"><span class="lnk-t">'+esc(l.t)+'</span>'+
+        (sub?'<span class="lnk-s">'+esc(sub)+'</span>':'')+'</span>'+
+        (isUrl?'</a>':'</div>')}).join('')+'</div>';
+  }
   if(d.terms)h+='<div class="card"><h4>用語辞書（個別ページを自動生成）</h4><div class="chips" style="margin:0">'+
     d.terms.map(function(t){return '<span class="tag g">'+esc(t)+'</span>'}).join('')+'</div></div>';
   if(d.tl)h+='<div class="card"><h4>続報（最新が上）</h4><div class="tl">'+d.tl.map(function(t){
@@ -616,20 +631,29 @@ function bind(){
   var a=document.getElementById('askRow');if(a)a.onclick=function(){a.textContent='送信しました — Actions が調査を開始します';a.style.borderStyle='solid'};
 }
 
+/* 下バーは一度だけ組み立て、以降は有効/無効の切り替えだけにする。
+ * 毎回 innerHTML を作り直すと、3秒ごとの同期描画とタップが重なったときに
+ * 押した要素そのものが消えて操作が空振りする。 */
+var bbBuilt=false;
 function renderBottom(){
-  var canB=hpos>0,canF=hpos<hist.length-1;
-  bottombar.innerHTML=
-    '<button class="bb" id="bbBack"'+(canB?'':' disabled')+' aria-label="1つ前に戻る">'+ic('back')+'</button>'+
-    '<button class="bb" id="bbHome" aria-label="ダッシュボードへ">'+ic('home')+'</button>'+
-    '<button class="bb acc" id="bbAdd" aria-label="登録ショートカット">'+ic('plus')+'</button>'+
-    '<button class="bb" id="bbRef" aria-label="GitHubと同期して更新">'+ic('refresh')+'</button>'+
-    '<button class="bb" id="bbFwd"'+(canF?'':' disabled')+' aria-label="1つ先へ進む">'+ic('fwd')+'</button>';
-  document.getElementById('bbBack').onclick=histBack;
-  document.getElementById('bbFwd').onclick=histFwd;
-  document.getElementById('bbHome').onclick=function(){go('home')};
-  document.getElementById('bbAdd').onclick=openAddMenu;
-  document.getElementById('bbRef').onclick=doRefresh;
+  if(!bbBuilt){
+    bottombar.innerHTML=
+      '<button class="bb" id="bbBack" aria-label="1つ前に戻る">'+ic('back')+'</button>'+
+      '<button class="bb" id="bbHome" aria-label="ダッシュボードへ">'+ic('home')+'</button>'+
+      '<button class="bb acc" id="bbAdd" aria-label="登録ショートカット">'+ic('plus')+'</button>'+
+      '<button class="bb" id="bbRef" aria-label="GitHubと同期して更新">'+ic('refresh')+'</button>'+
+      '<button class="bb" id="bbFwd" aria-label="1つ先へ進む">'+ic('fwd')+'</button>';
+    document.getElementById('bbBack').onclick=histBack;
+    document.getElementById('bbFwd').onclick=histFwd;
+    document.getElementById('bbHome').onclick=function(){go('home')};
+    document.getElementById('bbAdd').onclick=openAddMenu;
+    document.getElementById('bbRef').onclick=doRefresh;
+    bbBuilt=true;
+  }
+  document.getElementById('bbBack').disabled=!(hpos>0);
+  document.getElementById('bbFwd').disabled=!(hpos<hist.length-1);
 }
+
 function openAddMenu(){
   var opts=[['event','予定を登録'],['task','タスクを登録'],['meal','食事を記録'],
             ['photo','写真で登録'],['research','調べてほしい内容を登録']];
@@ -793,7 +817,7 @@ function loadAll(){
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=res[1]||{};
-    applyState();
+    applyUserState();
     render();updateNotice();
   });
 }

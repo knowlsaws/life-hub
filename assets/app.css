@@ -262,9 +262,15 @@
   .tl .it:last-child:after{display:none}
   .tl .tt{font-size:12.5px;margin-bottom:3px}
   .tl .tm{font-size:10px;color:var(--faint);font-family:var(--mono)}
-  .lnk{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--line);font-size:12.5px;color:var(--gold);cursor:pointer}
+  .lnk{display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-top:1px solid var(--line);
+    font-size:12.5px;color:var(--gold);cursor:pointer;text-decoration:none;min-width:0}
   .lnk:first-of-type{border-top:0}
-  .lnk svg{width:14px;height:14px;flex:none}
+  .lnk svg{width:14px;height:14px;flex:none;margin-top:2px}
+  /* 長い URL がカードをはみ出さないようにする */
+  .lnk-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .lnk-t{color:var(--gold);word-break:break-word}
+  .lnk-s{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mail-body{font-size:12.5px;line-height:1.85;color:var(--dim);white-space:pre-wrap;
     border-left:2px solid var(--line2);padding-left:12px;border-radius:0}
   .fig{height:110px;border-radius:9px;border:1px solid var(--line2);margin-bottom:9px;
