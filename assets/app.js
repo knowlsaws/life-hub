@@ -52,6 +52,25 @@ var D=[], EV=[], DEMO_MODE=true;
  * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
 var GREETING={text:''};
 var MANIFEST={sections:{}};
+/* 用語辞書（.web/terms.json）。全メニューの本文で既知の語をリンクにし、
+ * タップで解説を出す。検索の一覧には出さない。 */
+var TERMS={},TERMRE=null;
+function buildTermRe(){
+  var keys=Object.keys(TERMS);
+  if(!keys.length){TERMRE=null;return}
+  // 長い語から先に当てる（「量子ビット」が「量子」に食われないように）
+  keys.sort(function(a,b){return b.length-a.length});
+  TERMRE=new RegExp('('+keys.map(function(k){
+    return k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}).join('|')+')','g');
+}
+/* esc 済みテキストの中の既知語をリンクに変える。
+ * 既に HTML を含む文字列には使わないこと。 */
+function linkTerms(escaped){
+  if(!TERMRE)return escaped;
+  return escaped.replace(TERMRE,function(m){
+    return '<button class="tlink" data-term="'+m+'">'+m+'</button>';
+  });
+}
 /* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
  * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
@@ -430,7 +449,7 @@ function showDetail(i){
   if(d.graph)h+='<div class="card"><h4>体重推移と予測</h4>'+spark()+'</div>';
   if(d.fig)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
     '<div class="kv" style="border-top:0"><span class="k">形式</span><span class="v">初心者向け · 画像付き</span></div></div>';
-  if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+esc(d.body)+'</p></div>';
+  if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+linkTerms(esc(d.body))+'</p></div>';
   if(d.cast)h+='<div class="card"><h4>キャスト（役名 / 声優）</h4>'+d.cast.map(function(c){
     return '<div class="kv"><span class="k">'+esc(c[1])+'</span><span class="v">'+esc(c[0])+'</span></div>'}).join('')+'</div>';
   if(d.eps)h+='<div class="card"><h4>各話</h4>'+d.eps.map(function(e,n){
@@ -450,8 +469,10 @@ function showDetail(i){
       return open+ic('link')+'<span class="lnk-b"><span class="lnk-t">'+esc(l.t)+'</span>'+
         (sub?'<span class="lnk-s">'+esc(sub)+'</span>':'')+'</span>'+close}).join('')+'</div>';
   }
-  if(d.terms)h+='<div class="card"><h4>用語辞書（個別ページを自動生成）</h4><div class="chips" style="margin:0">'+
-    d.terms.map(function(t){return '<span class="tag g">'+esc(t)+'</span>'}).join('')+'</div></div>';
+  if(d.terms)h+='<div class="card"><h4>用語辞書</h4><div class="chips" style="margin:0">'+
+    d.terms.map(function(t){
+      return TERMS[t]?'<button class="tag g" data-term="'+esc(t)+'">'+esc(t)+'</button>'
+                     :'<span class="tag">'+esc(t)+'</span>'}).join('')+'</div></div>';
   if(d.tl)h+='<div class="card"><h4>続報（最新が上）</h4><div class="tl">'+d.tl.map(function(t){
     return '<div class="it"><div class="tt">'+esc(t.t)+'</div><div class="tm">'+esc(t.m)+'</div></div>'}).join('')+'</div>'+
     '<div class="lnk" style="border-top:1px solid var(--line);color:var(--dim)">この話題は不要 — 別のニュースで補充</div></div>';
@@ -496,6 +517,7 @@ function showDetail(i){
   dBody.querySelectorAll('[data-form]').forEach(function(el){
     el.onclick=function(){openForm(el.getAttribute('data-form'))};
   });
+  bindTermLinks();
   dBody.querySelectorAll('[data-goev]').forEach(function(el){
     el.onclick=function(){
       var id=el.getAttribute('data-goev');
@@ -527,6 +549,31 @@ function showDetail(i){
   var note=document.getElementById('myNote');
   if(note)note.addEventListener('input',function(){
     x.myNote=note.value;touchState(x,{myNote:note.value});
+  });
+}
+/* 用語の解説。検索の一覧には出さず、リンクからだけ開く。 */
+function showTerm(name){
+  var t=TERMS[name];if(!t)return;
+  dSec.textContent='用語';
+  dTrash.style.display='none';dEdit.style.display='none';
+  var h='<h1 class="dtitle">'+esc(t.t)+'</h1>';
+  h+='<div class="dsub">'+esc(t.category||'用語')+
+     (t.aliases&&t.aliases.length?' · '+esc(t.aliases.join(' / ')):'')+'</div>';
+  if(t.one)h+='<div class="card"><h4>一言でいうと</h4><p class="prose">'+linkTerms(esc(t.one))+'</p></div>';
+  if(t.body)h+='<div class="card"><h4>解説</h4><p class="prose">'+linkTerms(esc(t.body))+'</p></div>';
+  if(t.related&&t.related.length)
+    h+='<div class="card"><h4>関連する用語</h4><div class="chips" style="margin:0">'+
+      t.related.map(function(r){
+        return TERMS[r]?'<button class="tag g" data-term="'+esc(r)+'">'+esc(r)+'</button>'
+                       :'<span class="tag">'+esc(r)+'</span>'}).join('')+'</div></div>';
+  dBody.innerHTML=h;dBody.scrollTop=0;
+  det.classList.add('show');det.setAttribute('aria-hidden','false');
+  bindTermLinks();
+}
+function openTerm(name){curDet={term:name};pushHist();showTerm(name)}
+function bindTermLinks(){
+  dBody.querySelectorAll('[data-term]').forEach(function(el){
+    el.onclick=function(ev){ev.stopPropagation();openTerm(el.getAttribute('data-term'))};
   });
 }
 function hideDetail(){det.classList.remove('show');det.setAttribute('aria-hidden','true');
@@ -912,6 +959,7 @@ function setSync(txt,ok){
 }
 function useDemo(){
   D=DEMO.items.slice();EV=DEMO.events.slice();DEMO_MODE=true;
+  TERMS=DEMO.terms||{};buildTermRe();
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
   if(noticeEl)noticeEl.hidden=true;
@@ -930,11 +978,13 @@ function loadAll(){
     D=items;EV=events;DEMO_MODE=false;
     return Promise.all([
       GH.getJSON('.web/greeting.json').catch(function(){return null}),
-      GH.getJSON('.web/state.json').catch(function(){return null})
+      GH.getJSON('.web/state.json').catch(function(){return null}),
+      GH.getJSON('.web/terms.json').catch(function(){return null})
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=res[1]||{};
+    TERMS=res[2]||{};buildTermRe();
     applyUserState();
     render();updateNotice();
   });

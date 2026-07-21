@@ -239,6 +239,10 @@
   .kv .k{color:var(--dim);flex:none}
   .kv .v{text-align:right;font-family:var(--mono);font-size:11.5px}
   .prose{font-size:13px;line-height:1.75;margin:0;white-space:pre-wrap}
+  /* 本文中の既知の用語。下線で「押せる」ことを示す */
+  .tlink{background:none;border:0;padding:0;font:inherit;color:var(--gold);cursor:pointer;
+    text-decoration:underline;text-decoration-color:rgba(207,164,92,.45);text-underline-offset:3px}
+  button.tag{font-family:var(--font)}
   .chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px;cursor:pointer}
   .chk:first-of-type{border-top:0}
   .box{width:17px;height:17px;border-radius:5px;border:1px solid var(--line2);background:var(--s2);flex:none;display:grid;place-items:center;color:transparent;font-size:11px}
