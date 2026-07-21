@@ -88,7 +88,7 @@ var app=document.getElementById('app'),scroll=document.getElementById('scroll'),
  clr=document.getElementById('clr'),tagsug=document.getElementById('tagsug'),brand=document.getElementById('brand'),
  mask=document.getElementById('mask'),sheet=document.getElementById('sheet'),
  actzone=document.getElementById('actzone'),bottombar=document.getElementById('bottombar'),
- dTrash=document.getElementById('dTrash');
+ dTrash=document.getElementById('dTrash'),dEdit=document.getElementById('dEdit');
 var view='home',query='',queryRaw='',mailRead=false,seg={},curTag='',curDet=null;
 /* この画面で開いて既読にしたメール。未読フィルタ中でも消さずに残す。 */
 var sessionRead={};
@@ -403,7 +403,7 @@ function showDetail(i){
   if(x.s==='mail'){if(x.unread)sessionRead[stateKey(x)]=1;x.unread=0}
   if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
-  dTrash.style.display='none';
+  dTrash.style.display='none';dEdit.style.display='none';
   var h='';
   if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px"><span class="po" style="width:74px;height:106px;font-size:26px">'+esc(d.poster)+'</span>'+
     '<span style="flex:1;min-width:0"><h1 class="dtitle" style="font-size:17px">'+esc(x.t)+'</h1>'+
@@ -529,7 +529,8 @@ function showDetail(i){
     x.myNote=note.value;touchState(x,{myNote:note.value});
   });
 }
-function hideDetail(){det.classList.remove('show');det.setAttribute('aria-hidden','true');dTrash.style.display='none'}
+function hideDetail(){det.classList.remove('show');det.setAttribute('aria-hidden','true');
+  dTrash.style.display='none';dEdit.style.display='none'}
 document.getElementById('backBtn').onclick=histBack;
 
 // ---- forms
@@ -573,8 +574,9 @@ function mealRowHTML(n){
     '<div class="sug dishSug"></div>'+
     '<label class="fl">個数 / 量</label><input type="text" data-k="量" placeholder="1杯（並）"></div>';
 }
-function openForm(k){
+function openForm(k,prefill,opts){
   var F=FORMS[k];if(!F)return;
+  prefill=prefill||{};opts=opts||{};
   var h='<h3>'+esc(F.h)+'</h3><div class="sh">'+esc(F.s)+'</div>';
   if(F.multi){
     h+='<div id="mealRows">'+mealRowHTML(1)+'</div>'+
@@ -584,22 +586,28 @@ function openForm(k){
     F.f.forEach(function(f){
       h+='<label class="fl">'+esc(f[0])+'</label>';
       var dk=' data-k="'+esc(f[0])+'"';
-      if(f[1]==='select')h+='<select'+dk+'>'+f[2].split('|').map(function(o){return '<option>'+esc(o)+'</option>'}).join('')+'</select>';
-      else if(f[1]==='timeall')h+='<div class="cbrow"><input type="time" id="timeIn" data-k="時間" value="00:00" style="flex:1">'+
-        '<label><input type="checkbox" id="alldayCb" data-k="終日"> 終日</label></div>';
-      else if(f[1]==='place')h+='<input type="text" id="placeIn" data-k="場所" placeholder="'+esc(f[2])+'" autocomplete="off">'+
+      var pv=prefill[f[0]]!==undefined?String(prefill[f[0]]):'';
+      var va=pv?' value="'+esc(pv)+'"':'';
+      if(f[1]==='select')h+='<select'+dk+'>'+f[2].split('|').map(function(o){
+        return '<option'+(o===pv?' selected':'')+'>'+esc(o)+'</option>'}).join('')+'</select>';
+      else if(f[1]==='timeall')h+='<div class="cbrow"><input type="time" id="timeIn" data-k="時間" value="'+
+        esc(prefill['時間']||'00:00')+'" style="flex:1">'+
+        '<label><input type="checkbox" id="alldayCb" data-k="終日"'+(prefill['終日']?' checked':'')+'> 終日</label></div>';
+      else if(f[1]==='place')h+='<input type="text" id="placeIn" data-k="場所"'+va+' placeholder="'+esc(f[2])+'" autocomplete="off">'+
         '<div class="plist" id="placeSug" style="display:none"></div>';
       else if(f[1]==='file')h+='<div class="fig" style="height:88px">画像をアップロード</div>';
-      else h+='<input type="'+f[1]+'"'+dk+' placeholder="'+esc(f[2])+'">';
+      else h+='<input type="'+f[1]+'"'+dk+va+' placeholder="'+esc(f[2])+'">';
     });
   }
-  h+='<button class="btn" id="fSubmit">登録して GitHub に送信</button><button class="btn sec" id="fCancel">キャンセル</button>';
+  h+='<button class="btn" id="fSubmit">'+(opts.editId?'変更を保存':'登録して GitHub に送信')+
+     '</button><button class="btn sec" id="fCancel">キャンセル</button>';
   sheet.innerHTML=h;mask.classList.add('show');sheet.scrollTop=0;
 
   var cb=document.getElementById('alldayCb'),ti=document.getElementById('timeIn');
-  if(cb&&ti)cb.addEventListener('change',function(){
-    ti.disabled=cb.checked;if(cb.checked)ti.value='';
-  });
+  if(cb&&ti){
+    cb.addEventListener('change',function(){ti.disabled=cb.checked;if(cb.checked)ti.value=''});
+    if(cb.checked){ti.disabled=true;ti.value=''}
+  }
   var pi=document.getElementById('placeIn');
   if(pi){
     var ps=document.getElementById('placeSug');
@@ -655,8 +663,18 @@ function openForm(k){
     // 反映まで待たされると操作が重く感じるため。
     var local=localEvent(k,payload);
     mask.classList.remove('show');
-    if(local){EV.push(local);render();}
-    GH.pushInbox(k,payload).then(function(){
+    if(opts.editId){
+      // 編集は既存を差し替える。id は保ったまま。
+      payload.id=opts.editId;
+      EV.forEach(function(e){
+        if(e.id!==opts.editId||!local)return;
+        e.n=local.n;e.d=local.d;e.time=local.time;e.place=local.place;
+        e.who=local.who;e.allday=local.allday;e.rep=local.rep;e.pending=1;e.failed=0;
+      });
+      local=EV.filter(function(e){return e.id===opts.editId})[0]||null;
+      render();
+    }else if(local){EV.push(local);render();}
+    GH.pushInbox(opts.editId?'update':k,payload).then(function(){
       if(local){local.pending=0;render();}
       setSync('送信しました',true);
     }).catch(function(e){
@@ -679,9 +697,16 @@ function bind(){
       mailRead=el.getAttribute('data-mail')==='1';
       if(mailRead)sessionRead={};
       render()}});
-    root.querySelectorAll('[data-form]').forEach(function(el){el.onclick=function(){openForm(el.getAttribute('data-form'))}});
+    root.querySelectorAll('[data-form]').forEach(function(el){el.onclick=function(){
+      var kind=el.getAttribute('data-form');
+      // 予定一覧の上部から作った場合は当日を初期値にする
+      var pre=kind==='event'?{'日付':fD(TODAY).replace(/\//g,'-')}
+             :kind==='task'?{'締切':fD(TODAY).replace(/\//g,'-')}:null;
+      openForm(kind,pre);
+    }});
     root.querySelectorAll('[data-ev]').forEach(function(el){el.onclick=function(){openEvent(el.getAttribute('data-ev'))}});
-    root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){openForm('event')}});
+    root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
+      openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
   });
   var p=document.getElementById('photoRow');if(p)p.onclick=openPhotos;
   var a=document.getElementById('askRow');if(a)a.onclick=function(){a.textContent='送信しました — Actions が調査を開始します';a.style.borderStyle='solid'};
@@ -756,7 +781,7 @@ function showEvent(id){
       i=Math.round((dt-new Date(fD(TODAY).replace(/\//g,'-')))/864e5),w=wx(i);
   var isTask=e.type==='task';
   dSec.textContent=isTask?'タスク':'予定';
-  dTrash.style.display='grid';
+  dTrash.style.display='grid';dEdit.style.display='grid';
   var h='<h1 class="dtitle">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</h1>';
   h+='<div class="dsub">'+ds+' ('+WK[dt.getDay()]+')'+(hol?' '+hol:'')+' · '+wxs(w)+'</div>';
   h+='<div class="card"><h4>詳細</h4>'+
@@ -779,9 +804,28 @@ function showEvent(id){
   dBody.innerHTML=h;dBody.scrollTop=0;det.classList.add('show');det.setAttribute('aria-hidden','false');
   dTrash.onclick=function(){
     confirmDelete(e.n,function(){
+      // 画面から先に消し、GitHub へは裏で削除を送る。
+      // ローカルだけ消しても次の同期で復活してしまうため。
       for(var j=0;j<EV.length;j++){if(EV[j].id===id){EV.splice(j,1);break}}
       histBack();
+      if(GH.hasToken()&&String(id).indexOf('local-')!==0){
+        GH.pushInbox('delete',{id:id,name:e.n}).then(function(){
+          setSync('削除しました',true);
+        }).catch(function(err){
+          EV.push(e);render();
+          notify('削除の送信に失敗しました（'+err.message+'）。もう一度お試しください。',true);
+        });
+      }
     });
+  };
+  dEdit.onclick=function(){
+    openForm(e.type==='task'?'task':'event',
+      e.type==='task'?{'タスク名':e.n,'締切':e.d.replace(/\//g,'-')}
+                     :{'予定名':e.n,'日付':e.d.replace(/\//g,'-'),
+                       '時間':(e.time&&e.time!=='—')?e.time:'',
+                       '終日':!!e.allday,'場所':e.place||'','一緒に遊ぶ人':e.who||'',
+                       '繰り返し':e.rep||'なし'},
+      {editId:id});
   };
 }
 
