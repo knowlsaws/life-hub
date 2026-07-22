@@ -103,20 +103,65 @@ function linkTerms(escaped){
 /* ユーザー編集値（既読・視聴ステータス・各話チェック・自己評価/メモ）は
  * .web/state.json に分離する。パイプラインはこのファイルを読むだけで書かない。
  * こうすることでパイプラインはセクションJSONを自由に再生成できる。 */
-var STATE={},PENDING={},stateTimer=null;
+/* 書き込みが GitHub に届く前のリロード/離脱や一時的な失敗でも編集が消えないよう、
+ * 端末の localStorage に即キャッシュし、未同期分(PENDING)は再試行で送る。 */
+var LS_STATE='lifehub.state',LS_PENDING='lifehub.statePending';
+var STATE={},PENDING={},TOUCHED={},stateTimer=null,stateSaving=false,stateFails=0;
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
-/* リモートの state.json を取り込むときのマージ。編集直後は、書き込みがまだ
- * 反映されていない state.json が返ることがある（デバウンス前の同期・手動更新・
- * 書き込み直後の read）。そのまま上書きすると「更新したのに同期で元に戻る」ため、
- * 保存が未確定のローカル編集(PENDING)は守る。リモートがローカルと一致した
- * （保存が確定した）キーだけ PENDING を解除し、以後はリモートに追従する。 */
+
+function loadLocalState(){
+  try{
+    STATE=JSON.parse(localStorage.getItem(LS_STATE)||'{}')||{};
+    (JSON.parse(localStorage.getItem(LS_PENDING)||'[]')||[]).forEach(function(k){PENDING[k]=1;TOUCHED[k]=1});
+  }catch(e){STATE={}}
+}
+function persistLocal(){
+  try{
+    localStorage.setItem(LS_STATE,JSON.stringify(STATE));
+    localStorage.setItem(LS_PENDING,JSON.stringify(Object.keys(PENDING)));
+  }catch(e){}
+}
+
+/* リモート state.json の取り込み。取得失敗(null)なら手元を保持して消さない。
+ * この端末で編集したキー(TOUCHED)は常にローカルを優先し、同期の再取得・
+ * 書き込み前の read・取得遅延で編集が戻る／消えるのを防ぐ。触っていないキーは
+ * リモートに追従する（別端末の更新も反映）。 */
 function mergeRemoteState(remote){
-  remote=remote||{};
-  for(var k in PENDING){
-    if(JSON.stringify(remote[k])===JSON.stringify(STATE[k]))delete PENDING[k];
-    else remote[k]=STATE[k];
-  }
-  return remote;
+  if(!remote)return STATE;
+  var out={};
+  for(var k in remote)out[k]=remote[k];
+  for(var k in TOUCHED)if(STATE[k]!==undefined)out[k]=STATE[k];
+  return out;
+}
+
+function scheduleStateSave(delay){
+  clearTimeout(stateTimer);
+  stateTimer=setTimeout(saveState,delay);
+}
+/* 未保存の編集(PENDING)を state.json に書き出す。ページ離脱時にも呼ぶ。
+ * 失敗時は編集を握ったままバックオフで再試行し、勝手に諦めない。 */
+function saveState(){
+  clearTimeout(stateTimer);
+  if(!GH.hasToken()||stateSaving)return;
+  var writing=Object.keys(PENDING);
+  if(!writing.length)return;
+  var snap={};writing.forEach(function(k){snap[k]=JSON.stringify(STATE[k])});
+  stateSaving=true;
+  GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
+             'state: ユーザー編集を保存 [skip ci]')
+    .then(function(){
+      stateSaving=false;stateFails=0;
+      // 保存中に再編集されていないキーだけ確定（PENDING から外す）
+      writing.forEach(function(k){if(JSON.stringify(STATE[k])===snap[k])delete PENDING[k]});
+      persistLocal();
+      if(Object.keys(PENDING).length)scheduleStateSave(500);
+      else setSync('保存しました',true);
+    })
+    .catch(function(){
+      stateSaving=false;stateFails++;
+      setSync(stateFails>=3?'保存できません — 接続と権限を確認':'保存を再試行中…',false);
+      scheduleStateSave(Math.min(15000,1000*Math.pow(2,stateFails)));
+    });
 }
 // publish_works.py の STATUS_CODES / BADGE と対になっている。片方だけ変えないこと。
 var ST_CODES=['upcoming','available','watching','done'];
@@ -177,13 +222,9 @@ function touchState(x,patch){
   for(var p in patch)cur[p]=patch[p];
   STATE[k]=cur;
   if(!GH.hasToken())return;
-  PENDING[k]=1;   // 保存が確定するまで、同期の再取得で上書きされないよう守る
-  clearTimeout(stateTimer);
-  stateTimer=setTimeout(function(){
-    GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
-               'state: ユーザー編集を保存 [skip ci]')
-      .catch(function(){setSync('保存失敗',false)});
-  },1200);
+  TOUCHED[k]=1;PENDING[k]=1;
+  persistLocal();          // 即ローカル保存（リロード/離脱でも消えない）
+  scheduleStateSave(1200);
 }
 
 var app=document.getElementById('app'),scroll=document.getElementById('scroll'),det=document.getElementById('det'),
@@ -576,6 +617,21 @@ function renderSearch(){
 // ---- detail
 function isWork(s){return s==='anime'||s==='tv'||s==='movies'}
 function bodyHead(s){return s==='mail'?'AI 要約':s==='meal'?'AI アドバイス':isWork(s)?'あらすじ':'解説'}
+/* 件名の表記ゆれ（|タグ|・【】・空白など）を無視して突き合わせるための正規化。
+ * 予定側の e.mail はパイプラインで一部が削られ、メール一覧の t と完全一致しない。 */
+function normSubj(s){return String(s||'').replace(/[|｜\[\]【】()（）\s　]/g,'').toLowerCase()}
+/* メール詳細の「登録された予定 / タスク」リンクから、実際に登録済みの予定/タスクを
+ * 引き当てる。パイプラインのリンクは id を持たないことがあるので、元メール件名
+ * （e.mail）と名前（"種別: 名前" の名前部分）で EV から探す。 */
+function resolveMailEv(mailItem,l){
+  var name=String(l&&l.t||'').replace(/^[^:：]*[:：]\s*/,'').trim();
+  var ns=normSubj(mailItem.t);
+  var same=EV.filter(function(e){return e.mail&&normSubj(e.mail)===ns});
+  var hit=same.filter(function(e){return e.n===name})[0]
+        ||(same.length===1?same[0]:null)
+        ||EV.filter(function(e){return e.n===name})[0];
+  return hit?hit.id:'';
+}
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
@@ -625,10 +681,15 @@ function showDetail(i){
     var lt=d.linksTitle||(x.s==='mail'?'登録された予定 / タスク':'出典');
     h+='<div class="card"><h4>'+esc(lt)+'</h4>'+d.links.map(function(l){
       var isUrl=/^https?:\/\//.test(l.to||'');
+      // メールの登録先リンクは id を持たないことがあるので、登録済みの予定/タスクから
+      // 実体を引き当てて data-goev で飛べるようにする。引き当てられなくても、メールの
+      // 登録先は常にタップ可能にし（data-goev=''）、予定一覧へ逃がす。
+      var ev=l.ev||(x.s==='mail'&&!isUrl?resolveMailEv(x,l):'');
+      var asBtn=!isUrl&&(ev||x.s==='mail');
       var sub=isUrl?String(l.to).replace(/^https?:\/\//,''):esc(l.to||'');
       var open=isUrl?'<a class="lnk" href="'+esc(l.to)+'" target="_blank" rel="noopener">'
-             :(l.ev?'<button class="lnk" data-goev="'+esc(l.ev)+'">':'<div class="lnk">');
-      var close=isUrl?'</a>':(l.ev?'</button>':'</div>');
+             :(asBtn?'<button class="lnk" data-goev="'+esc(ev)+'">':'<div class="lnk">');
+      var close=isUrl?'</a>':(asBtn?'</button>':'</div>');
       return open+ic('link')+'<span class="lnk-b"><span class="lnk-t">'+esc(l.t)+'</span>'+
         (sub?'<span class="lnk-s">'+esc(sub)+'</span>':'')+'</span>'+close}).join('')+'</div>';
   }
@@ -1105,7 +1166,8 @@ function showEvent(id){
     (e.src?'<div class="kv"><span class="k">出典</span><span class="v">'+esc(e.src)+'</span></div>':'')+'</div>';
 
   if(e.mail){
-    var mi=D.filter(function(x){return x.s==='mail'&&x.t===e.mail})[0];
+    var mi=D.filter(function(x){return x.s==='mail'&&x.t===e.mail})[0]
+         ||D.filter(function(x){return x.s==='mail'&&normSubj(x.t)===normSubj(e.mail)})[0];
     h+='<div class="card"><h4>元になったメール</h4>'+
       (mi?'<button class="lnk" data-gomail="'+D.indexOf(mi)+'">':'<div class="lnk">')+
       ic('mail')+'<span class="lnk-b"><span class="lnk-t">'+esc(e.mail)+'</span>'+
@@ -1266,7 +1328,7 @@ function loadAll(){
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
-    STATE=mergeRemoteState(res[1]);
+    STATE=mergeRemoteState(res[1]);persistLocal();
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     applyUserState();
@@ -1376,13 +1438,21 @@ function updateNotice(){
 document.getElementById('syncBtn').onclick=openSettings;
 
 if(GH.hasToken()){
+  loadLocalState();               // 未同期の編集を端末キャッシュから復元
   setSync('接続中…',false);
   D=[];EV=[];render();
   updateNotice();
   sync();
+  if(Object.keys(PENDING).length)scheduleStateSave(2500);  // 前回未送信分を送る
 }else{
   useDemo();
 }
 loadForecast();
 setInterval(sync,3000);
+/* ページを離れる/バックグラウンドに回る直前に未保存の編集を送り切る。
+ * デバウンス待ちのまま閉じても編集が消えないようにする。 */
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden')saveState();
+});
+window.addEventListener('pagehide',function(){saveState()});
 })();
