@@ -617,6 +617,21 @@ function renderSearch(){
 // ---- detail
 function isWork(s){return s==='anime'||s==='tv'||s==='movies'}
 function bodyHead(s){return s==='mail'?'AI 要約':s==='meal'?'AI アドバイス':isWork(s)?'あらすじ':'解説'}
+/* 件名の表記ゆれ（|タグ|・【】・空白など）を無視して突き合わせるための正規化。
+ * 予定側の e.mail はパイプラインで一部が削られ、メール一覧の t と完全一致しない。 */
+function normSubj(s){return String(s||'').replace(/[|｜\[\]【】()（）\s　]/g,'').toLowerCase()}
+/* メール詳細の「登録された予定 / タスク」リンクから、実際に登録済みの予定/タスクを
+ * 引き当てる。パイプラインのリンクは id を持たないことがあるので、元メール件名
+ * （e.mail）と名前（"種別: 名前" の名前部分）で EV から探す。 */
+function resolveMailEv(mailItem,l){
+  var name=String(l&&l.t||'').replace(/^[^:：]*[:：]\s*/,'').trim();
+  var ns=normSubj(mailItem.t);
+  var same=EV.filter(function(e){return e.mail&&normSubj(e.mail)===ns});
+  var hit=same.filter(function(e){return e.n===name})[0]
+        ||(same.length===1?same[0]:null)
+        ||EV.filter(function(e){return e.n===name})[0];
+  return hit?hit.id:'';
+}
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
@@ -666,10 +681,15 @@ function showDetail(i){
     var lt=d.linksTitle||(x.s==='mail'?'登録された予定 / タスク':'出典');
     h+='<div class="card"><h4>'+esc(lt)+'</h4>'+d.links.map(function(l){
       var isUrl=/^https?:\/\//.test(l.to||'');
+      // メールの登録先リンクは id を持たないことがあるので、登録済みの予定/タスクから
+      // 実体を引き当てて data-goev で飛べるようにする。引き当てられなくても、メールの
+      // 登録先は常にタップ可能にし（data-goev=''）、予定一覧へ逃がす。
+      var ev=l.ev||(x.s==='mail'&&!isUrl?resolveMailEv(x,l):'');
+      var asBtn=!isUrl&&(ev||x.s==='mail');
       var sub=isUrl?String(l.to).replace(/^https?:\/\//,''):esc(l.to||'');
       var open=isUrl?'<a class="lnk" href="'+esc(l.to)+'" target="_blank" rel="noopener">'
-             :(l.ev?'<button class="lnk" data-goev="'+esc(l.ev)+'">':'<div class="lnk">');
-      var close=isUrl?'</a>':(l.ev?'</button>':'</div>');
+             :(asBtn?'<button class="lnk" data-goev="'+esc(ev)+'">':'<div class="lnk">');
+      var close=isUrl?'</a>':(asBtn?'</button>':'</div>');
       return open+ic('link')+'<span class="lnk-b"><span class="lnk-t">'+esc(l.t)+'</span>'+
         (sub?'<span class="lnk-s">'+esc(sub)+'</span>':'')+'</span>'+close}).join('')+'</div>';
   }
@@ -1146,7 +1166,8 @@ function showEvent(id){
     (e.src?'<div class="kv"><span class="k">出典</span><span class="v">'+esc(e.src)+'</span></div>':'')+'</div>';
 
   if(e.mail){
-    var mi=D.filter(function(x){return x.s==='mail'&&x.t===e.mail})[0];
+    var mi=D.filter(function(x){return x.s==='mail'&&x.t===e.mail})[0]
+         ||D.filter(function(x){return x.s==='mail'&&normSubj(x.t)===normSubj(e.mail)})[0];
     h+='<div class="card"><h4>元になったメール</h4>'+
       (mi?'<button class="lnk" data-gomail="'+D.indexOf(mi)+'">':'<div class="lnk">')+
       ic('mail')+'<span class="lnk-b"><span class="lnk-t">'+esc(e.mail)+'</span>'+
