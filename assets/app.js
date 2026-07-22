@@ -533,6 +533,29 @@ function renderSchedule(){
   }
   h+='<div class="sechead"><span class="n">今日から2ヶ月</span><span class="c">'+shown+' 日</span></div>'+
      '<div class="list">'+out+'</div>';
+
+  /* 62日枠より先の単発の予定/タスク。メールから登録された数ヶ月先の解約・締切
+   * などが枠外で埋もれないよう、まとめて出す。定期（誕生日等）は3年分に展開され
+   * 溢れるので除外する。 */
+  var winEnd=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
+  winEnd.setDate(winEnd.getDate()+62);
+  var winEndStr=fD(winEnd);
+  var future=EV.filter(function(e){
+    return e.src!=='定期'&&e.d>winEndStr&&
+      (!query||(e.n+' '+(e.place||'')+' '+(e.who||'')).toLowerCase().indexOf(query)>-1);
+  }).sort(function(a,b){return a.d<b.d?-1:(a.d>b.d?1:0)});
+  if(future.length){
+    h+='<div class="sechead"><span class="n">この先の予定</span><span class="c">'+future.length+' 件</span></div>'+
+      '<div class="list">'+future.map(function(e){
+        var chk=e.type==='task'
+          ? '<span class="tick'+(e.done?' on':'')+'" data-done="'+e.id+'" role="button" aria-label="完了を切り替え"></span>':'';
+        return '<div class="day"><div class="ev"><button class="e1'+(e.done?' done':'')+'" data-ev="'+e.id+'">'+
+          '<span class="et">'+e.d.slice(5)+'</span>'+chk+
+          '<span class="en">'+(e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span>'+
+          '<span class="ew">'+esc(e.type==='task'?(e.done?'済':'TASK'):(e.time&&e.time!=='—'?e.time:''))+'</span>'+
+          '</button></div></div>';
+      }).join('')+'</div>';
+  }
   return {act:act,body:h};
 }
 
