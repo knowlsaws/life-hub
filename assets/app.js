@@ -640,16 +640,26 @@ function renderSearch(){
 // ---- detail
 function isWork(s){return s==='anime'||s==='tv'||s==='movies'}
 function bodyHead(s){return s==='mail'?'AI 要約':s==='meal'?'AI アドバイス':isWork(s)?'あらすじ':'解説'}
-/* 件名の表記ゆれ（|タグ|・【】・空白など）を無視して突き合わせるための正規化。
- * 予定側の e.mail はパイプラインで一部が削られ、メール一覧の t と完全一致しない。 */
-function normSubj(s){return String(s||'').replace(/[|｜\[\]【】()（）\s　]/g,'').toLowerCase()}
+/* 件名の表記ゆれを無視して突き合わせるための正規化。予定側の e.mail は
+ * パイプラインが件名を個別ページのファイル名にする過程で記号（: ／ 、|【】など）を
+ * 落としたり長さで末尾を切ったりするため、メール一覧の t と完全一致しない。
+ * 文字（各種言語）と数字以外を全て除去して比較する。 */
+function normSubj(s){return String(s||'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase()}
+/* 2つの件名が同じメールを指すか。記号除去後に一致、または（ファイル名が末尾で
+ * 切られる場合に備え）一方が他方の十分に長い先頭一致なら同一とみなす。 */
+function sameSubj(a,b){
+  a=normSubj(a);b=normSubj(b);
+  if(!a||!b)return false;
+  if(a===b)return true;
+  var lo=a.length<b.length?a:b,hi=a.length<b.length?b:a;
+  return lo.length>=12&&hi.indexOf(lo)===0;
+}
 /* メール詳細の「登録された予定 / タスク」リンクから、実際に登録済みの予定/タスクを
  * 引き当てる。パイプラインのリンクは id を持たないことがあるので、元メール件名
  * （e.mail）と名前（"種別: 名前" の名前部分）で EV から探す。 */
 function resolveMailEv(mailItem,l){
   var name=String(l&&l.t||'').replace(/^[^:：]*[:：]\s*/,'').trim();
-  var ns=normSubj(mailItem.t);
-  var same=EV.filter(function(e){return e.mail&&normSubj(e.mail)===ns});
+  var same=EV.filter(function(e){return e.mail&&sameSubj(e.mail,mailItem.t)});
   var hit=same.filter(function(e){return e.n===name})[0]
         ||(same.length===1?same[0]:null)
         ||EV.filter(function(e){return e.n===name})[0];
@@ -1190,7 +1200,7 @@ function showEvent(id){
 
   if(e.mail){
     var mi=D.filter(function(x){return x.s==='mail'&&x.t===e.mail})[0]
-         ||D.filter(function(x){return x.s==='mail'&&normSubj(x.t)===normSubj(e.mail)})[0];
+         ||D.filter(function(x){return x.s==='mail'&&sameSubj(x.t,e.mail)})[0];
     h+='<div class="card"><h4>元になったメール</h4>'+
       (mi?'<button class="lnk" data-gomail="'+D.indexOf(mi)+'">':'<div class="lnk">')+
       ic('mail')+'<span class="lnk-b"><span class="lnk-t">'+esc(e.mail)+'</span>'+
