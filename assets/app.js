@@ -9,6 +9,7 @@ var ICON={
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
+ memento:'<path d="M6 3h12M6 21h12M8 3v3.5c0 2 1.5 3.5 4 5.5 2.5-2 4-3.5 4-5.5V3M8 21v-3.5c0-2 1.5-3.5 4-5.5 2.5 2 4 3.5 4 5.5V21"/>',
  grid:'<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
  plus:'<path d="M12 5v14M5 12h14"/>',
  link:'<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
@@ -1277,13 +1278,15 @@ function renderMenu(){
     mh+='<button class="mi'+(view===s.k?' on':'')+'" data-f="'+s.k+'">'+ic(s.k)+esc(s.n)+
       (c?'<span class="ct">'+c+'</span>':'')+'</button>';
   });
-  mh+='<div class="mg">アプリ</div><button class="mi" id="miPhotos">'+ic('photos')+'Google フォト</button>';
+  mh+='<div class="mg">アプリ</div><button class="mi" id="miMemento">'+ic('memento')+'MEMENTO</button>'+
+    '<button class="mi" id="miPhotos">'+ic('photos')+'Google フォト</button>';
   var menuEl=document.getElementById('menu');
   menuEl.innerHTML=mh;
   menuEl.querySelectorAll('.mi[data-f]').forEach(function(el){
     el.onclick=function(){go(el.getAttribute('data-f'))};
   });
   document.getElementById('miPhotos').onclick=function(){closeD();openPhotos()};
+  document.getElementById('miMemento').onclick=function(){closeD();location.href='memento/'};
 }
 
 // search + tag suggestions

@@ -1,0 +1,74 @@
+# MEMENTO の進化レビューを四半期ごとに起票する。
+# なぜ Issue か: この仕組みは「GitHub と Claude だけで完結する」制約の下にある。
+# Actions が問いを立て、利用者が答え、Claude が memento/EVOLUTION.md に従って
+# 実装する——この循環全体が app の一部である。詳細は memento/EVOLUTION.md。
+name: memento-evolution
+
+on:
+  schedule:
+    # 各四半期の初日 09:00 JST（00:00 UTC）
+    - cron: '0 0 1 1,4,7,10 *'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  open-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const jst = new Date(Date.now() + 9 * 3600 * 1000);
+            const y = jst.getUTCFullYear();
+            const q = Math.floor(jst.getUTCMonth() / 3) + 1;
+            const title = `MEMENTO 進化レビュー ${y} Q${q}`;
+
+            // 同じ四半期の起票が既にあれば重ねない（手動実行との重複対策）
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'memento-evolution', per_page: 20
+            });
+            if (existing.data.some(i => i.title === title)) {
+              core.info(`既に起票済み: ${title}`);
+              return;
+            }
+
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner, repo: context.repo.repo,
+                name: 'memento-evolution', color: 'CFA45C',
+                description: 'MEMENTO の四半期進化レビュー'
+              });
+            } catch (e) { /* 既存ならそれでよい */ }
+
+            const body = [
+              'MEMENTO が変わり続けるための、四半期に一度のレビューです。',
+              '3 つの問いに短く答えてください。空欄のままでも構いません（空欄も情報です）。',
+              '',
+              '### 1. この四半期、MEMENTO をどのくらい開きましたか',
+              '',
+              '（毎日 / 週に数回 / 月に数回 / ほとんど開かなかった）',
+              '',
+              '### 2. 効いている装置・効いていない装置はどれですか',
+              '',
+              '（人生の暦 / 残数 / 一行日記 —— 見た瞬間に何かを感じるか、風景になっているか）',
+              '',
+              '### 3. あなた自身や生活に、この四半期どんな変化がありましたか',
+              '',
+              '（環境の変化・関心の変化・新しく数えたくなったもの、など何でも）',
+              '',
+              '---',
+              '',
+              '答えたら、この Issue を Claude に渡してください。',
+              '[claude.ai/code](https://claude.ai/code) でこのリポジトリを開き、',
+              `「Issue #（この番号）の進化レビューを実施して」と伝えるだけです。`,
+              'Claude は `memento/EVOLUTION.md` の憲法に従って、変更を最大 3 件まで実装し、',
+              'このスレッドに意図を報告して閉じます。'
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ['memento-evolution']
+            });
