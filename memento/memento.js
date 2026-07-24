@@ -184,6 +184,24 @@
     rsTimer = setTimeout(function () { if (entered) drawCal(1); }, 160);
   });
 
+  /* ── のこり秒 ────────────────────────────── */
+
+  /* 暦の上限（horizon 歳の誕生日）までを一秒ごとに数え減らす。
+   * 毎回 doc から計算するので、設定を変えれば次の一秒から反映される。 */
+  var mortalTimer = null;
+  function startMortal() {
+    if (mortalTimer) return;
+    var el = $('mortalSec');
+    function tick() {
+      var b = new Date(doc.birth + 'T00:00:00'),
+          end = new Date(b);
+      end.setFullYear(b.getFullYear() + doc.horizon);
+      el.textContent = fmt(Math.max(0, Math.floor((end - Date.now()) / 1000)));
+    }
+    tick();
+    mortalTimer = setInterval(tick, 1000);
+  }
+
   /* ── 残数 ────────────────────────────────── */
 
   function curAge(p) { return new Date().getFullYear() - p.birthYear; }
@@ -360,6 +378,7 @@
     renderCalCap();
     renderRows();
     renderToday();
+    startMortal();
     if (!entered) enterCal(); else drawCal(1);
   }
 
