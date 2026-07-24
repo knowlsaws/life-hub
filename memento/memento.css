@@ -42,6 +42,14 @@ body{margin:0;background:#050506;font-family:var(--font);color:var(--text);
 .mark::after{content:"";display:block;width:1px;height:26px;margin:26px auto 0;
   background:linear-gradient(180deg,var(--gold),transparent)}
 
+/* ── のこり秒 ──────────────────────────────── */
+.mortal{margin-top:30px;text-align:center}
+.mortal .ml{display:block;font-size:9px;letter-spacing:.5em;text-indent:.5em;
+  color:var(--faint);margin-bottom:12px}
+.mortal .mn{font-family:var(--serif);font-size:27px;letter-spacing:.05em;color:var(--plat);
+  font-variant-numeric:tabular-nums}
+.mortal .mu{font-size:10px;letter-spacing:.2em;color:var(--faint);margin-left:9px}
+
 /* ── 節 ────────────────────────────────────── */
 section{margin-top:74px}
 .h{font-size:10px;letter-spacing:.4em;color:var(--faint);margin-bottom:22px}
