@@ -22,6 +22,11 @@ assets/
 ├── places.js      住所検索（OpenStreetMap Nominatim）
 ├── demo-data.js   PAT 未設定時のサンプル。実データは含めない
 └── app.js         画面本体（ルーティング・履歴・各セクションの描画）
+memento/
+├── index.html     MEMENTO — 有限性の認識装置（人生の暦・残数・一行日記）
+├── memento.css
+├── memento.js
+└── EVOLUTION.md   進化の憲法。目的・原則・変更の作法・変更履歴
 ```
 
 ## 使い方
@@ -42,6 +47,18 @@ PAT は **life-content のみ・Contents: Read and write** に絞ること。
 
 画面からの登録は `.web/inbox/` へのコミットになり、life-content 側の
 push トリガーの Actions がそれを処理する。
+
+## MEMENTO
+
+`/memento/` は独立した一枚のページ。人生を週の格子で見せる暦、
+大切な人と会える残り回数の推定、一行日記と「あの年の今日」を表示する。
+
+- 認証はハブと同じ（`assets/github.js` を同一オリジンで再利用）。追加設定は不要
+- データは localStorage `memento.data` が正で、PAT があれば life-content の
+  `.web/memento.json` へも同期する
+- `.github/workflows/memento-evolution.yml` が四半期ごとに「進化レビュー」Issue を
+  起票する。Issue に答えて Claude に渡すと、`memento/EVOLUTION.md` の憲法に従って
+  app 自身が改修される。詳細は同ファイルを参照
 
 ## 外部依存
 

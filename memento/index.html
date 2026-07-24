@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0C">
+<title>MEMENTO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0C'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%23CFA45C'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="memento.css?v=1">
+</head>
+<body>
+<div class="page">
+
+  <!-- 初回のみ：生年月日を尋ねる。それ以外の入力は求めない -->
+  <div class="gate" id="gate" hidden>
+    <div>
+      <div class="gate-q">あなたの時間は、いつ始まりましたか。</div>
+      <input type="date" id="gateBirth" aria-label="生年月日">
+      <button class="tbtn gate-go" id="gateGo">はじめる</button>
+    </div>
+  </div>
+
+  <div class="wrap" id="main" hidden>
+
+    <header class="top">
+      <a class="back" href="../">LIFE</a>
+      <span class="ver" id="verTag">I</span>
+    </header>
+
+    <h1 class="mark">MEMENTO</h1>
+
+    <section class="reveal" id="secCal">
+      <div class="h">人生の暦</div>
+      <div class="calbox">
+        <canvas id="cal"></canvas>
+        <span class="now" id="nowDot" hidden></span>
+      </div>
+      <div class="calcap">
+        <span>第 <span class="n" id="wkNow">—</span> 週</span>
+        <span><span class="n" id="wkAll">—</span> 週のうち <span class="n" id="wkPct">—</span></span>
+      </div>
+    </section>
+
+    <section class="reveal" id="secCount">
+      <div class="h">残数</div>
+      <div id="rows"></div>
+      <div class="add" id="addRow">＋ 人を加える</div>
+      <div class="form" id="pForm" hidden>
+        <div class="f"><label for="fName">名前</label><input id="fName" autocomplete="off"></div>
+        <div class="f"><label for="fAge">いまの年齢</label><input id="fAge" type="number" min="0" max="120" inputmode="numeric"></div>
+        <div class="f"><label for="fFreq">年に会う回数</label><input id="fFreq" type="number" min="1" max="366" inputmode="numeric"></div>
+        <div class="f"><label for="fUntil">何歳までと考えるか</label><input id="fUntil" type="number" min="1" max="120" inputmode="numeric" placeholder="85"></div>
+        <div class="formact">
+          <button class="tbtn warn" id="fDel" hidden>消す</button>
+          <button class="tbtn" id="fCancel">やめる</button>
+          <button class="tbtn gold" id="fSave">刻む</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" id="secToday">
+      <div class="h">今日</div>
+      <div class="date" id="todayDate">—</div>
+      <div class="line">
+        <input id="diary" maxlength="120" placeholder="一行だけ。" autocomplete="off">
+        <span class="saved" id="savedDot"></span>
+      </div>
+      <div id="pastBox"></div>
+    </section>
+
+    <section class="settings" id="settings" hidden>
+      <div class="h">設定</div>
+      <div class="form on">
+        <div class="f"><label for="sBirth">生年月日</label><input id="sBirth" type="date"></div>
+        <div class="f"><label for="sHorizon">暦の長さ（年）</label><input id="sHorizon" type="number" min="40" max="110" inputmode="numeric"></div>
+        <div class="formact">
+          <button class="tbtn" id="sExport">書き出す</button>
+          <button class="tbtn" id="sImport">読み込む</button>
+        </div>
+        <p class="note">記録はこの端末に保存され、ハブの接続設定（PAT）があれば
+        private リポジトリへも静かに同期されます。</p>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </section>
+
+    <footer class="reveal">
+      <span class="lnk" id="cfgBtn">設定</span>
+      <span class="sync" id="syncState">○ この端末のみ</span>
+    </footer>
+
+  </div>
+</div>
+<script src="../assets/github.js?v=dev720737"></script>
+<script src="memento.js?v=1"></script>
+</body>
+</html>
