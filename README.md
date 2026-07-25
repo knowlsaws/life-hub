@@ -20,6 +20,7 @@ assets/
 ├── app.css        画面スタイル（ダーク・モノトーン）
 ├── github.js      GitHub API クライアント（PAT・取得・書き込み・manifest 監視）
 ├── places.js      住所検索（OpenStreetMap Nominatim）
+├── nearby.js      近くのスポット検索（現在地 + Overpass API）
 ├── demo-data.js   PAT 未設定時のサンプル。実データは含めない
 └── app.js         画面本体（ルーティング・履歴・各セクションの描画）
 memento/
@@ -60,8 +61,25 @@ push トリガーの Actions がそれを処理する。
   起票する。Issue に答えて Claude に渡すと、`memento/EVOLUTION.md` の憲法に従って
   app 自身が改修される。詳細は同ファイルを参照
 
+## 近くのスポット
+
+メニューの「近くのスポット」は、現在地の周辺からレストラン・カフェ・コンビニ・
+ガソリンスタンド・トイレ・道の駅（SA/PA 含む）・スーパー・ドラッグストア・駐車場・
+ATM/銀行・病院・温泉/銭湯をカテゴリーのワンタップで検索し、近い順に表示する。
+
+- 行をタップすると詳細（住所・営業時間・電話・ジャンルなど）、右のピンで
+  Google マップが直接開く。詳細画面には検索と経路案内のボタンがある
+- 0件に近いときは半径を自動で3倍（上限 50km）に広げて一度だけ再検索する
+- 結果は同一地点(約100m格子)×カテゴリーで10分間キャッシュする
+- 位置情報は端末内でのみ使用し、検索座標が Overpass API に送られる以外は
+  どこにも保存・送信されない
+
 ## 外部依存
 
-住所検索のみ [Nominatim](https://nominatim.openstreetmap.org)（APIキー不要・無料）を
-ブラウザから直接呼ぶ。利用規約に従い 700ms デバウンスし、結果をキャッシュしている。
-通信できない環境では内蔵の候補にフォールバックする。
+いずれも APIキー不要・無料で、ブラウザから直接呼ぶ（バックエンド不要）。
+
+- 住所検索: [Nominatim](https://nominatim.openstreetmap.org)。利用規約に従い
+  700ms デバウンスし、結果をキャッシュ。通信できない環境では内蔵候補にフォールバック
+- 近くのスポット: [Overpass API](https://overpass-api.de)（OpenStreetMap）。
+  ミラー3系統（overpass-api.de / kumi.systems / osm.jp）へ順にフォールバック
+- 天気: [Open-Meteo](https://open-meteo.com)。現在地から16日先までの予報を予定に表示

@@ -21,7 +21,8 @@ var ICON={
  fwd:'<path d="M9 6l6 6-6 6"/>',
  home:'<path d="M3 11l9-8 9 8M6 10v10h12V10"/>',
  refresh:'<path d="M20.5 11a8.5 8.5 0 1 0-2.2 6.3M20.5 4.5V11h-6.5"/>',
- trash:'<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'
+ trash:'<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+ pin:'<path d="M12 21s-6.8-5.4-6.8-10.9a6.8 6.8 0 0 1 13.6 0C18.8 15.6 12 21 12 21z"/><circle cx="12" cy="10" r="2.5"/>'
 };
 function ic(k,c){return '<svg class="'+(c||'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+(ICON[k]||'')+'</svg>'}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -31,7 +32,7 @@ function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
   {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
-function sn(k){for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
+function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
 /* 祝日は life-content から配信される（vault の holidays.md ＋ 公開API）。
@@ -256,6 +257,8 @@ function applyState(s){
     render();
     if(s.det==null)hideDetail();
     else if(typeof s.det==='number')showDetail(s.det);
+    else if(s.det.term)showTerm(s.det.term);
+    else if(s.det.nb)showNearbySpot(s.det.nb);
     else showEvent(s.det.ev);
   }finally{
     // ここで戻し損ねると pushHist() が無効化され、以降ずっと「戻る」が効かなくなる
@@ -291,7 +294,8 @@ function setBrand(){
   if(view==='home')brand.innerHTML='<span class="w">LIFE</span><span class="s">hub</span>';
   else if(view==='tag')brand.innerHTML='<span class="sect">タグ: '+esc(curTag)+'</span>';
   else brand.innerHTML='<span class="sect">'+esc(sn(view))+'</span>';
-  q.placeholder = view==='home' ? '全ツールを横断して検索' : (view==='tag'?'このタグ内を検索':sn(view)+'の中を検索');
+  q.placeholder = view==='home' ? '全ツールを横断して検索' :
+    (view==='tag'?'このタグ内を検索':(view==='nearby'?'検索結果を絞り込み':sn(view)+'の中を検索'));
 }
 
 function badges(x){
@@ -326,6 +330,7 @@ function render(){
   else if(view==='meal')r=renderMeal();
   else if(view==='news')r=renderNews();
   else if(view==='search')r=renderSearch();
+  else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
   scroll.innerHTML=(r.body||'')+'<div class="footn">GitHub のみで完結 · manifest 監視 3秒</div>';
   renderBottom();
@@ -415,6 +420,10 @@ function renderHome(){
       '<span class="tp">'+ic(s.k,'ico')+'</span><span class="nm">'+s.n+'</span>'+
       '<span class="mt">'+m[0]+'</span><span class="ft">'+m[1]+'</span></button>';
   });
+  h+='<button class="tile" data-sec="nearby">'+
+    '<span class="tp">'+ic('pin','ico')+'</span><span class="nm">近くのスポット</span>'+
+    '<span class="mt">現在地からワンタップ検索</span>'+
+    '<span class="ft">レストラン · コンビニ · GS ほか</span></button>';
   h+='</div>';
   // 実際に確認できるのは GitHub の同期状態だけ。Claude Code と LINE は
   // サイトから状態を取得する術が無いので、状態表示は載せない。
@@ -636,6 +645,92 @@ function renderSearch(){
     '<div class="kv"><span class="k">登録語数</span><span class="v">'+nTerms+' 語</span></div>'+
     '<div class="kv"><span class="k">使い方</span><span class="v">本文中の語をタップ</span></div></div>';
   return {act:act,body:h};
+}
+
+/* ---- 近くのスポット ------------------------------------------------------
+ * 現在地 + Overpass API（assets/nearby.js）。カテゴリーをワンタップで
+ * 近い順に表示し、行タップで詳細、ピン/ボタンで Google マップに飛ぶ。
+ */
+var NB_LIST=[];   // いま画面に出している結果（絞り込み後）。data-nb の添字と対応
+function renderNearby(){
+  var S=Nearby.state,cat=null;
+  Nearby.CATS.forEach(function(c){if(c.k===S.cat)cat=c});
+  if(S.phase==='idle')Nearby.warm(render);   // 1タップ目を速くするため位置だけ先に温める
+  var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
+    return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
+  }).join('')+'</div>';
+  var h='';
+  if(S.loc){
+    var d=new Date(S.locAt);
+    h+='<div class="nbloc">現在地 取得済み（精度 ±'+Math.round(S.loc.acc)+'m · '+
+      pad(d.getHours())+':'+pad(d.getMinutes())+'）'+
+      '<button class="tag" data-nbact="reloc">再取得</button></div>';
+  }
+  if(S.phase==='idle'){
+    h+='<div class="card"><h4>使い方</h4><p class="prose" style="color:var(--dim)">'+
+      '上のカテゴリーをタップすると、現在地の周辺を検索して近い順に表示します。\n'+
+      '行をタップすると詳細、右のピンで Google マップがそのまま開きます。\n'+
+      '位置情報はこの端末でのみ使用し、保存されません。</p></div>';
+  }else if(S.phase==='locating'){
+    h+='<div class="empty">現在地を取得しています…</div>';
+  }else if(S.phase==='loading'){
+    h+='<div class="empty">'+esc(cat?cat.n:'')+'を検索しています…</div>';
+  }else if(S.phase==='error'){
+    h+='<div class="card"><h4>エラー</h4><p class="prose" style="color:var(--ember)">'+esc(S.error)+'</p></div>'+
+      '<button class="btn sec" data-nbact="retry">再試行</button>';
+  }else if(S.phase==='ok'){
+    NB_LIST=S.items.filter(function(it){
+      return !query||((it.title+' '+it.line2).toLowerCase().indexOf(query)>-1);
+    });
+    h+='<div class="sechead"><span class="n">'+esc(cat?cat.n:'')+' · 近い順</span>'+
+      '<span class="c">'+NB_LIST.length+' 件 · 半径 '+Nearby.fmtDist(S.radius)+
+      (S.expanded?'（自動拡大）':'')+'</span></div>';
+    if(NB_LIST.length){
+      h+='<div class="list">'+NB_LIST.map(function(it,i){
+        return '<div class="nbwrap"><button class="row nbrow" data-nb="'+i+'">'+
+          '<span class="l"><span class="t">'+esc(it.title)+'</span><span class="m">'+esc(it.line2)+'</span></span>'+
+          '<span class="r"><span class="time">'+Nearby.fmtDist(it.dist)+'</span></span></button>'+
+          '<a class="nbgo" href="'+esc(Nearby.gmaps(it))+'" target="_blank" rel="noopener" '+
+          'aria-label="'+esc(it.title)+' を Google マップで開く">'+ic('pin')+'</a></div>';
+      }).join('')+'</div>';
+    }else{
+      h+='<div class="empty">'+(query
+        ?'「'+esc(queryRaw)+'」に一致する場所はありません'
+        :'この付近には見つかりませんでした（半径 '+Nearby.fmtDist(S.radius)+'）')+'</div>';
+    }
+    h+='<div class="footn">データ: © OpenStreetMap contributors（Overpass API）</div>';
+  }
+  return {act:act,body:h};
+}
+function openNearbySpot(it){curDet={nb:it};pushHist();showNearbySpot(it)}
+function showNearbySpot(it){
+  var t=it.tags||{};
+  dSec.textContent='近くのスポット';
+  dTrash.style.display='none';dEdit.style.display='none';dDone.style.display='none';
+  var h='<h1 class="dtitle">'+esc(it.title)+'</h1>';
+  h+='<div class="dsub">'+esc(it.sub)+' · 現在地から '+Nearby.fmtDist(it.dist)+'</div>';
+  var rows=[['カテゴリ',it.sub],['距離','現在地から '+Nearby.fmtDist(it.dist)]];
+  var ad=Nearby.addr(t);if(ad)rows.push(['住所',ad]);
+  var oh=Nearby.hoursJa(t.opening_hours);if(oh)rows.push(['営業時間',oh]);
+  var tel=t.phone||t['contact:phone'];if(tel)rows.push(['電話',tel]);
+  if(it.brand&&it.brand!==it.title)rows.push(['ブランド / 運営',it.brand]);
+  var cu=Nearby.cuisineJa(t.cuisine);if(cu)rows.push(['ジャンル',cu]);
+  if(t.wheelchair)rows.push(['車椅子',{yes:'対応',limited:'一部対応',no:'非対応'}[t.wheelchair]||t.wheelchair]);
+  if(t.capacity)rows.push(['収容台数',t.capacity+' 台']);
+  if(t.fee)rows.push(['料金',t.fee==='no'?'無料':(t.fee==='yes'?'有料':t.fee)]);
+  h+='<div class="card"><h4>詳細</h4>'+rows.map(function(r){
+    return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>'}).join('')+'</div>';
+  // OSM 由来の値なので、http(s) 以外のスキーム（javascript: 等）は載せない
+  var web=t.website||t['contact:website'];
+  if(web&&!/^https?:\/\//i.test(web))web='';
+  if(web)h+='<div class="card"><h4>リンク</h4><a class="lnk" href="'+esc(web)+'" target="_blank" rel="noopener">'+
+    ic('link')+'<span class="lnk-b"><span class="lnk-t">公式サイト</span>'+
+    '<span class="lnk-s">'+esc(String(web).replace(/^https?:\/\//,''))+'</span></span></a></div>';
+  h+='<a class="btn" href="'+esc(Nearby.gmaps(it))+'" target="_blank" rel="noopener">Google マップで開く</a>';
+  h+='<a class="btn sec" href="'+esc(Nearby.gmapsDir(it))+'" target="_blank" rel="noopener">経路案内（Google マップ）</a>';
+  h+='<div class="footn">データ: © OpenStreetMap contributors · 実際の営業状況と異なる場合があります</div>';
+  dBody.innerHTML=h;dBody.scrollTop=0;
+  det.classList.add('show');det.setAttribute('aria-hidden','false');
 }
 
 // ---- detail
@@ -1087,6 +1182,13 @@ function bind(){
     });
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
+    root.querySelectorAll('[data-nbcat]').forEach(function(el){el.onclick=function(){
+      Nearby.select(el.getAttribute('data-nbcat'),render)}});
+    root.querySelectorAll('[data-nb]').forEach(function(el){el.onclick=function(){
+      var it=NB_LIST[+el.getAttribute('data-nb')];if(it)openNearbySpot(it)}});
+    root.querySelectorAll('[data-nbact]').forEach(function(el){el.onclick=function(){
+      if(el.getAttribute('data-nbact')==='reloc')Nearby.relocate(render);
+      else Nearby.retry(render)}});
   });
   var p=document.getElementById('photoRow');if(p)p.onclick=openPhotos;
   var g=document.getElementById('ghRow');if(g)g.onclick=openSettings;
@@ -1278,6 +1380,7 @@ function renderMenu(){
     mh+='<button class="mi'+(view===s.k?' on':'')+'" data-f="'+s.k+'">'+ic(s.k)+esc(s.n)+
       (c?'<span class="ct">'+c+'</span>':'')+'</button>';
   });
+  mh+='<button class="mi'+(view==='nearby'?' on':'')+'" data-f="nearby">'+ic('pin')+'近くのスポット</button>';
   mh+='<div class="mg">アプリ</div><button class="mi" id="miMemento">'+ic('memento')+'MEMENTO</button>'+
     '<button class="mi" id="miPhotos">'+ic('photos')+'Google フォト</button>';
   var menuEl=document.getElementById('menu');
