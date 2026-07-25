@@ -734,7 +734,10 @@ function showNearbySpot(it){
     ic('link')+'<span class="lnk-b"><span class="lnk-t">公式サイト</span>'+
     '<span class="lnk-s">'+esc(String(web).replace(/^https?:\/\//,''))+'</span></span></a></div>';
   h+='<div class="card" id="gRev" data-for="'+esc(it.id)+'"><h4>Google の評価・クチコミ</h4>'+
-    (Nearby.hasGoogleKey()
+    (!it.name
+      ?'<p class="prose" style="color:var(--dim)">名称が登録されていない場所のため、クチコミの照合は行いません'+
+       '（別の施設の情報を誤って表示しないためです）。</p>'
+      :Nearby.hasGoogleKey()
       ?'<p class="prose" style="color:var(--dim)">取得中…</p>'
       :'<p class="prose" style="color:var(--dim)">Google Maps の API キーを設定すると、ここに評価とクチコミを表示します。'+
        '個人利用なら通常は無料枠に収まります。</p>'+
@@ -747,7 +750,7 @@ function showNearbySpot(it){
   det.classList.add('show');det.setAttribute('aria-hidden','false');
   var kb=document.getElementById('gKeyBtn');
   if(kb)kb.onclick=openGoogleKeySheet;
-  if(Nearby.hasGoogleKey())loadGoogleReviews(it);
+  if(it.name&&Nearby.hasGoogleKey())loadGoogleReviews(it);
 }
 /* Google のクチコミを詳細カードへ流し込む。取得中に別の詳細へ移った場合は
  * data-for の照合で古い結果を捨てる。 */
@@ -771,7 +774,11 @@ function loadGoogleReviews(it){
     rvs.slice(0,4).forEach(function(rv){
       var name=(rv.authorAttribution&&rv.authorAttribution.displayName)||'匿名';
       var txt=(rv.text&&rv.text.text)||(rv.originalText&&rv.originalText.text)||'';
-      if(txt.length>220)txt=txt.slice(0,220)+'…';
+      // 220字で切るとき、絵文字などのサロゲートペアの途中で割らない
+      if(txt.length>220){
+        var cut=(txt.charCodeAt(219)&0xFC00)===0xD800?219:220;
+        txt=txt.slice(0,cut)+'…';
+      }
       h+='<div class="grev"><div class="gh"><span class="gn">'+esc(name)+'</span>'+
         '<span class="gs">'+stars(rv.rating||0)+'</span>'+
         '<span class="gt">'+esc(rv.relativePublishTimeDescription||'')+'</span></div>'+

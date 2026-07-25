@@ -301,15 +301,26 @@ window.Nearby = (function () {
   function runSearch(cat, loc, r, expanded, shrunk) {
     return overpass(buildQuery(cat, loc, r)).then(function (j) {
       var els = j.elements || [];
-      /* 上限いっぱい返ってきたら打ち切りの可能性が高い（打ち切りは距離順ではない
-       * ため最寄りが欠けうる）。半径を半分に絞って取り直す（最大2回・下限500m）。 */
-      if (els.length >= OUT_LIMIT && !expanded && (shrunk || 0) < 2 && r > 500) {
-        return runSearch(cat, loc, Math.round(r / 2), false, (shrunk || 0) + 1);
+      function toItems(arr) {
+        return dedupe(arr.map(function (el) { return normalize(el, cat, loc); })
+          .filter(Boolean)
+          .sort(function (a, b) { return a.dist - b.dist; })).slice(0, 40);
       }
-      var items = els.map(function (el) { return normalize(el, cat, loc); })
-        .filter(Boolean)
-        .sort(function (a, b) { return a.dist - b.dist; });
-      items = dedupe(items).slice(0, 40);
+      var items = toItems(els);
+      /* 上限いっぱい返ってきたら打ち切りの可能性が高い（打ち切りは距離順ではない
+       * ため最寄りが欠けうる）。半径を半分に絞って取り直す（最大2回・下限500m）。
+       * 密集地の縁（海沿い・公園際など）では絞ると逆に減ることがあるので、
+       * その場合は打ち切りありでも元の結果を残す。拡大後の打ち切りにも適用する。 */
+      if (els.length >= OUT_LIMIT && (shrunk || 0) < 2 && r >= 1000) {
+        return runSearch(cat, loc, Math.round(r / 2), expanded, (shrunk || 0) + 1)
+          .then(function (res2) {
+            /* 絞った結果が実用件数（3件以上）ならそちらを採用する — 絞った半径内は
+             * 完全なので「近い順」が正確。ほぼ空振り（密集地の縁に立っている等）なら、
+             * 打ち切りの可能性ありでも元の結果を残す方が役に立つ。 */
+            return res2.items.length >= 3 ? res2
+                 : { items: items, radius: r, expanded: !!expanded };
+          });
+      }
       if (items.length < 3 && !expanded && !shrunk) {
         var r2 = Math.min(r * 3, 50000);
         if (r2 > r) return runSearch(cat, loc, r2, true, 0).then(function (res2) {
@@ -396,6 +407,9 @@ window.Nearby = (function () {
     gCache = {};
   }
   function googlePlace(it) {
+    /* 名称が無い場所（トイレ・駐車場など）は「トイレ」等の一般語で検索する
+     * ことになり、別の施設が引き当たってしまう。照合しない（null = 該当なし）。 */
+    if (!it.name) return Promise.resolve(null);
     var key = '';
     try { key = localStorage.getItem(LS_GKEY) || ''; } catch (e) {}
     if (!key) return Promise.reject(new Error('APIキーが未設定です'));
@@ -412,8 +426,8 @@ window.Nearby = (function () {
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': key,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,' +
-            'places.reviews,places.currentOpeningHours.openNow,places.googleMapsUri'
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.rating,' +
+            'places.userRatingCount,places.reviews,places.currentOpeningHours.openNow,places.googleMapsUri'
         },
         body: JSON.stringify({
           textQuery: it.name || it.title,
@@ -423,14 +437,25 @@ window.Nearby = (function () {
         }),
         signal: ctl ? ctl.signal : undefined
       }).then(function (r) {
-        if (r.status === 400 || r.status === 403)
-          throw new Error('APIキーが無効か、Places API (New) が有効化されていません（HTTP ' + r.status + '）');
-        if (r.status === 429) throw new Error('リクエスト上限に達しました（HTTP 429）。時間をおいてお試しください');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
+        if (r.ok) return r.json();
+        /* 失敗時は本文 {error:{status,message}} を読み、実際の理由を添える */
+        return r.json().catch(function () { return null; }).then(function (j) {
+          var det = (j && j.error && (j.error.message || j.error.status)) || '';
+          var msg;
+          if (r.status === 429) msg = 'リクエスト上限に達しました（HTTP 429）。時間をおいてお試しください';
+          else if (r.status === 400 || r.status === 403)
+            msg = 'APIキーが無効か、Places API (New) が有効化されていません（HTTP ' + r.status +
+                  (det ? ' · ' + det.slice(0, 120) : '') + '）';
+          else msg = 'HTTP ' + r.status + (det ? '（' + det.slice(0, 120) + '）' : '');
+          throw new Error(msg);
+        });
       }).then(function (j) {
         clearTimeout(t);
         var p = (j.places && j.places[0]) || null;
+        /* locationBias はあくまで“優先”で、圏外の結果も返りうる。座標を突き合わせ、
+         * 300m 超離れた候補は別の場所とみなして採用しない（誤表示防止）。 */
+        if (p && p.location &&
+            hav(it.lat, it.lng, p.location.latitude, p.location.longitude) > 300) p = null;
         gCache[it.id] = { place: p, at: Date.now() };
         resolve(p);
       }).catch(function (e) { clearTimeout(t); reject(e); });
