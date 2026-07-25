@@ -82,15 +82,6 @@ var D=[], EV=[], DEMO_MODE=true;
 /* 挨拶文は life-content の .web/greeting.json から配信する。
  * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
 var GREETING={text:''};
-/* トップ上部に出す「トピック」＝ユーザーが選んだ最大3セクション。
- * その最新数件を表示する。選択は端末の localStorage に保存する。 */
-var TOPIC_MAX=3;
-var TOPIC_DEFAULT=['mail','schedule','news'];
-var TOPICS=(function(){
-  try{var v=JSON.parse(localStorage.getItem('lifehub.topics')||'null');
-    if(v&&v.length)return v.slice(0,TOPIC_MAX);}catch(e){}
-  return TOPIC_DEFAULT.slice();
-})();
 var MANIFEST={sections:{}};
 /* 用語辞書（.web/terms.json）。全メニューの本文で既知の語をリンクにし、
  * タップで解説を出す。検索の一覧には出さない。 */
@@ -347,60 +338,27 @@ function render(){
   bind();
 }
 
-/* 1トピック（＝1セクション）の見出し＋最新数件。見出しタップでそのセクションへ、
- * 各行タップで詳細へ（bind が data-sec / data-i / data-ev を配線する）。 */
-function topicBlock(k){
-  var head='<div class="sechead" data-sec="'+k+'" style="cursor:pointer">'+ic(k)+
-    '<span class="n">'+sn(k)+'</span>'+
-    (newCount(k)?'<span class="c">新着 '+newCount(k)+'</span>':'')+'</div>';
-  var body;
-  if(k==='schedule'){
-    var td0=fD(TODAY);
-    var up=EV.filter(function(e){return e.d>=td0&&!e.done}).sort(function(a,b){
-      return a.d<b.d?-1:(a.d>b.d?1:(evOrder(a)-evOrder(b)||(a.time||'').localeCompare(b.time||'')));
-    }).slice(0,3);
-    body=up.length?'<div class="list">'+up.map(function(e){
-      return '<button class="row" data-ev="'+e.id+'"><span class="l"><span class="t">'+
-        (e.rep?'<span class="rep">⟳</span> ':'')+esc(e.n)+'</span><span class="m">'+
-        esc(e.d.slice(5)+' '+(e.type==='task'?'締切':(e.time&&e.time!=='—'?e.time:'終日')))+
-        '</span></span></button>';
-    }).join('')+'</div>':'<div class="empty">今後の予定はありません</div>';
-  }else{
-    var items=sortItems(D.filter(function(x){return x.s===k&&!x.gone}),k).slice(0,3);
-    body=items.length?'<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>'
-      :'<div class="empty">項目がありません</div>';
-  }
-  return head+body;
-}
-/* トップに出すトピック（セクション）を最大3つ選ぶシート。 */
-function openTopicPicker(){
-  var sel=TOPICS.slice();
-  function draw(){
-    sheet.innerHTML='<h3>トピックを選ぶ</h3><div class="sh">最大'+TOPIC_MAX+
-      'つ。選んだセクションの最新をトップ上部に表示します（'+sel.length+'/'+TOPIC_MAX+'）</div>'+
-      SEC.map(function(s){var on=sel.indexOf(s.k)>-1;
-        return '<button class="act" data-topic="'+s.k+'" style="width:100%;margin-top:8px;'+
-          'justify-content:flex-start'+(on?';border-color:var(--gold);color:var(--gold)':'')+'">'+
-          ic(s.k)+esc(s.n)+'<span style="margin-left:auto">'+(on?'✓':'')+'</span></button>';
-      }).join('')+
-      '<button class="btn" id="topicSave">保存</button><button class="btn sec" id="topicCancel">キャンセル</button>';
-    sheet.querySelectorAll('[data-topic]').forEach(function(el){
-      el.onclick=function(){
-        var k=el.getAttribute('data-topic'),i=sel.indexOf(k);
-        if(i>-1)sel.splice(i,1);
-        else if(sel.length<TOPIC_MAX)sel.push(k);
-        draw();
-      };
-    });
-    document.getElementById('topicCancel').onclick=function(){mask.classList.remove('show')};
-    document.getElementById('topicSave').onclick=function(){
-      if(!sel.length)return;
-      TOPICS=sel.slice(0,TOPIC_MAX);
-      try{localStorage.setItem('lifehub.topics',JSON.stringify(TOPICS))}catch(e){}
-      mask.classList.remove('show');render();
-    };
-  }
-  mask.classList.add('show');draw();sheet.scrollTop=0;
+/* トップの「トピック」: 全セクション＋予定から3件を日替わりでランダムに選ぶ。
+ * 乱数は日付でシードし、3秒ごとの同期再描画で中身が入れ替わらないようにする。
+ * セクションが偏らないよう、まずセクションを混ぜて1件ずつ拾う。 */
+function pickTopics(){
+  var seed=0,ds=fD(TODAY);
+  for(var i=0;i<ds.length;i++)seed=((seed*31+ds.charCodeAt(i))>>>0);
+  function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+  var td0=ds;
+  var bySec={};
+  D.forEach(function(x){
+    if(x.gone)return;
+    (bySec[x.s]=bySec[x.s]||[]).push({sec:sn(x.s),t:x.t});
+  });
+  var up=EV.filter(function(e){return e.d>=td0&&!e.done});
+  if(up.length)bySec.schedule=up.map(function(e){
+    return {sec:'予定',t:e.n+'（'+e.d.slice(5)+'）'}});
+  var keys=Object.keys(bySec);
+  for(var i=keys.length-1;i>0;i--){var j=Math.floor(rnd()*(i+1));var t=keys[i];keys[i]=keys[j];keys[j]=t}
+  return keys.slice(0,3).map(function(k){
+    var arr=bySec[k];return arr[Math.floor(rnd()*arr.length)];
+  });
 }
 function renderHome(){
   if(query){
@@ -417,11 +375,13 @@ function renderHome(){
   }
   var ur=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var h='<div class="greet"><div class="d">'+dayLabel(TODAY)+'</div></div>';
-  // 挨拶の代わりに、選んだ3トピック（セクション）の最新を上部に出す
-  h+='<div class="sechead"><span class="n">トピック</span>'+
-     '<button class="c" id="topicEdit" style="background:none;border:0;color:var(--gold);'+
-     'font:inherit;cursor:pointer;padding:0">編集</button></div>';
-  h+=TOPICS.map(topicBlock).join('');
+  // 日替わりでランダムに選んだ3件だけをシンプルに出す（リンクなし）
+  var picks=pickTopics();
+  if(picks.length)
+    h+='<div class="card" style="margin-bottom:12px"><h4>トピック</h4>'+
+      picks.map(function(p){
+        return '<div class="kv"><span class="k">'+esc(p.sec)+'</span><span class="v">'+esc(p.t)+'</span></div>';
+      }).join('')+'</div>';
   // 今日の予定・タスクを実データから拾う（DAY → TASK → 時間順）
   var td=fD(TODAY);
   var todays=EV.filter(function(e){return e.d===td}).sort(function(a,b){
@@ -1358,7 +1318,6 @@ function bind(){
   var p=document.getElementById('photoRow');if(p)p.onclick=openPhotos;
   var g=document.getElementById('ghRow');if(g)g.onclick=openSettings;
   var a=document.getElementById('askRow');if(a)a.onclick=function(){a.textContent='送信しました — Actions が調査を開始します';a.style.borderStyle='solid'};
-  var te=document.getElementById('topicEdit');if(te)te.onclick=openTopicPicker;
 }
 
 /* 下バーは一度だけ組み立て、以降は有効/無効の切り替えだけにする。
