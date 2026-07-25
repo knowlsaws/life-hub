@@ -7,23 +7,28 @@
  */
 window.Nearby = (function () {
   /* 全球データを持つミラーを先に。overpass-api.de 本家は 2025 年以降
-   * ボット対策で機械的なリクエストに 406 を返すことがあるため最後に回す。
-   * openstreetmap.jp は日本コミュニティ運営（低遅延だが対象は日本中心）。 */
+   * ボット対策で機械的なリクエストに 406 を返すことがあるため後ろに回す。
+   * z / lz4 は本家の個別サーバー（本家はこの2台に振り分けている）。
+   * openstreetmap.jp はブラウザから CORS で使えないため入れない（実機で確認）。 */
   var MIRRORS = [
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
-    'https://overpass.openstreetmap.jp/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
     'https://overpass-api.de/api/interpreter'
   ];
+  var LS_MIRROR = 'lifehub.nbMirror';   // 直近で成功したミラー（次回はここから試す）
 
   /* カテゴリー定義。q は Overpass のタグフィルタ（node/way 両方に適用）。
    * r は初期半径(m)。0件に近いときは自動で3倍(上限50km)に広げて1回だけ再検索する。
    * noname は無名でも載せる（トイレ・駐車場は名前が無いのが普通）。 */
+  /* フィルタは正規表現ではなく完全一致の集合にする。Overpass はタグの完全一致に
+   * インデックスが効くため、混雑したサーバーでも処理が速く queue 落ちしにくい。 */
   var CATS = [
     { k: 'rest',  n: 'レストラン',       e: '🍽',  r: 1500,
-      q: ['["amenity"~"^(restaurant|fast_food|food_court)$"]'] },
+      q: ['["amenity"="restaurant"]', '["amenity"="fast_food"]', '["amenity"="food_court"]'] },
     { k: 'cafe',  n: 'カフェ',           e: '☕',  r: 1500,
-      q: ['["amenity"~"^(cafe|ice_cream)$"]'] },
+      q: ['["amenity"="cafe"]', '["amenity"="ice_cream"]'] },
     { k: 'conv',  n: 'コンビニ',         e: '🏪',  r: 1200,
       q: ['["shop"="convenience"]'] },
     { k: 'fuel',  n: 'ガソリンスタンド', e: '⛽',  r: 3000,
@@ -34,17 +39,17 @@ window.Nearby = (function () {
       /* 道の駅は「name に道の駅」を正とし、SA/PA(highway=services/rest_area)も拾う。
        * バス停の「道の駅前」などは除外する。 */
       q: ['["name"~"道の駅"]["highway"!~"^(bus_stop|platform)$"]["public_transport"!~"."]',
-          '["highway"~"^(rest_area|services)$"]'] },
+          '["highway"="rest_area"]', '["highway"="services"]'] },
     { k: 'super', n: 'スーパー',         e: '🛒',  r: 2000,
       q: ['["shop"="supermarket"]'] },
     { k: 'drug',  n: 'ドラッグストア',   e: '💊',  r: 2000,
-      q: ['["amenity"="pharmacy"]', '["shop"~"^(chemist|drugstore)$"]'] },
+      q: ['["amenity"="pharmacy"]', '["shop"="chemist"]', '["shop"="drugstore"]'] },
     { k: 'park',  n: '駐車場',           e: '🅿️', r: 1200, noname: 1,
       q: ['["amenity"="parking"]["access"!~"^(private|no)$"]'] },
     { k: 'atm',   n: 'ATM・銀行',        e: '🏧',  r: 1500,
-      q: ['["amenity"~"^(atm|bank)$"]'] },
+      q: ['["amenity"="atm"]', '["amenity"="bank"]'] },
     { k: 'hosp',  n: '病院',             e: '🏥',  r: 3000,
-      q: ['["amenity"~"^(hospital|clinic|doctors)$"]'] },
+      q: ['["amenity"="hospital"]', '["amenity"="clinic"]', '["amenity"="doctors"]'] },
     { k: 'bath',  n: '温泉・銭湯',       e: '♨️', r: 10000,
       q: ['["amenity"="public_bath"]'] }
   ];
@@ -111,28 +116,52 @@ window.Nearby = (function () {
     if (e && e.message === '不正な応答') return e.message;
     return '接続エラー';
   }
+  /* 公開サーバーは混雑でキュー待ちが長いことがある（実機で 504 / 14秒超を確認）。
+   * 順番待ちだけだと遅いので「ヘッジ」する: 6秒応答が無ければ次のミラーも
+   * 並行で撃ち、最初に成功した応答を採用する。成功したミラーは記憶して
+   * 次回は最初に試す。全ミラー失敗のときだけエラーにする。 */
   function overpass(q) {
-    var i = 0, fails = [];
-    function next() {
-      if (i >= MIRRORS.length) {
-        var err = new Error('検索サーバーに接続できませんでした。時間をおいて再試行してください。');
-        err.detail = fails.join(' · ');
-        return Promise.reject(err);
+    var order = MIRRORS.slice();
+    try {
+      var g = localStorage.getItem(LS_MIRROR);
+      var gi = order.indexOf(g);
+      if (gi > 0) { order.splice(gi, 1); order.unshift(g); }
+    } catch (e) {}
+    return new Promise(function (resolve, reject) {
+      var started = 0, failed = 0, done = false, fails = [], timers = [];
+      function fire() {
+        if (done || started >= order.length) return;
+        var url = order[started++];
+        if (started < order.length) timers.push(setTimeout(fire, 6000));
+        get(url, q, 28000).then(function (j) {
+          if (done) return;
+          done = true;
+          timers.forEach(clearTimeout);
+          try { localStorage.setItem(LS_MIRROR, url); } catch (e) {}
+          resolve(j);
+        }, function (e) {
+          if (done) return;
+          failed++;
+          fails.push(url.replace(/^https:\/\//, '').split('/')[0] + ': ' + failReason(e));
+          if (failed >= order.length) {
+            done = true;
+            timers.forEach(clearTimeout);
+            var err = new Error('検索サーバーに接続できませんでした。時間をおいて再試行してください。');
+            err.detail = fails.join(' · ');
+            reject(err);
+          } else fire();   // 待ち時間より早く失敗が確定したら、すぐ次を撃つ
+        });
       }
-      var url = MIRRORS[i++];
-      return get(url, q, 14000).catch(function (e) {
-        fails.push(url.replace(/^https:\/\//, '').split('/')[0] + ': ' + failReason(e));
-        return next();
-      });
-    }
-    return next();
+      fire();
+    });
   }
   function buildQuery(cat, loc, r) {
     var ll = r + ',' + loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5);
     var lines = cat.q.map(function (f) {
       return 'node' + f + '(around:' + ll + ');way' + f + '(around:' + ll + ');';
     }).join('');
-    return '[out:json][timeout:12];(' + lines + ');out center 80;';
+    /* timeout はサーバー側のキュー待ちを見込んで長めにする（混雑時対策） */
+    return '[out:json][timeout:25];(' + lines + ');out center 80;';
   }
 
   // ---- 整形 ---------------------------------------------------------------

@@ -674,7 +674,8 @@ function renderNearby(){
   }else if(S.phase==='locating'){
     h+='<div class="empty">現在地を取得しています…</div>';
   }else if(S.phase==='loading'){
-    h+='<div class="empty">'+esc(cat?cat.n:'')+'を検索しています…</div>';
+    h+='<div class="empty">'+esc(cat?cat.n:'')+'を検索しています…<br>'+
+      '<span style="font-size:10.5px;color:var(--faint)">サーバーが混雑している場合は30秒ほどかかることがあります</span></div>';
   }else if(S.phase==='error'){
     h+='<div class="card"><h4>エラー</h4><p class="prose" style="color:var(--ember)">'+esc(S.error)+'</p>'+
       (S.errorDetail?'<p class="prose" style="color:var(--faint);font-family:var(--mono);font-size:10.5px;margin-top:8px">'+
