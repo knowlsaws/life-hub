@@ -676,7 +676,9 @@ function renderNearby(){
   }else if(S.phase==='loading'){
     h+='<div class="empty">'+esc(cat?cat.n:'')+'を検索しています…</div>';
   }else if(S.phase==='error'){
-    h+='<div class="card"><h4>エラー</h4><p class="prose" style="color:var(--ember)">'+esc(S.error)+'</p></div>'+
+    h+='<div class="card"><h4>エラー</h4><p class="prose" style="color:var(--ember)">'+esc(S.error)+'</p>'+
+      (S.errorDetail?'<p class="prose" style="color:var(--faint);font-family:var(--mono);font-size:10.5px;margin-top:8px">'+
+        esc(S.errorDetail)+'</p>':'')+'</div>'+
       '<button class="btn sec" data-nbact="retry">再試行</button>';
   }else if(S.phase==='ok'){
     NB_LIST=S.items.filter(function(it){

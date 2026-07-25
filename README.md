@@ -80,6 +80,7 @@ ATM/銀行・病院・温泉/銭湯をカテゴリーのワンタップで検索
 
 - 住所検索: [Nominatim](https://nominatim.openstreetmap.org)。利用規約に従い
   700ms デバウンスし、結果をキャッシュ。通信できない環境では内蔵候補にフォールバック
-- 近くのスポット: [Overpass API](https://overpass-api.de)（OpenStreetMap）。
-  ミラー3系統（overpass-api.de / kumi.systems / osm.jp）へ順にフォールバック
+- 近くのスポット: Overpass API（OpenStreetMap）。ミラー4系統
+  （kumi.systems / private.coffee / openstreetmap.jp / overpass-api.de）へ順に
+  フォールバック。本家 overpass-api.de はボット対策の 406 を返すことがあるため最後
 - 天気: [Open-Meteo](https://open-meteo.com)。現在地から16日先までの予報を予定に表示
