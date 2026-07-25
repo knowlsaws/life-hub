@@ -652,10 +652,13 @@ function renderSearch(){
  * 近い順に表示し、行タップで詳細、ピン/ボタンで Google マップに飛ぶ。
  */
 var NB_LIST=[];   // いま画面に出している結果（絞り込み後）。data-nb の添字と対応
+/* 非同期コールバックが他のセクションを描き直さないようにするガード。
+ * 検索中に別画面へ移った場合、そのままにしておけば戻ったとき render される。 */
+function nbUpd(){if(view==='nearby')render()}
 function renderNearby(){
   var S=Nearby.state,cat=null;
   Nearby.CATS.forEach(function(c){if(c.k===S.cat)cat=c});
-  if(S.phase==='idle')Nearby.warm(render);   // 1タップ目を速くするため位置だけ先に温める
+  if(S.phase==='idle')Nearby.warm(nbUpd);   // 1タップ目を速くするため位置だけ先に温める
   var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
     return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
   }).join('')+'</div>';
@@ -664,12 +667,13 @@ function renderNearby(){
     var d=new Date(S.locAt);
     h+='<div class="nbloc">現在地 取得済み（精度 ±'+Math.round(S.loc.acc)+'m · '+
       pad(d.getHours())+':'+pad(d.getMinutes())+'）'+
-      '<button class="tag" data-nbact="reloc">再取得</button></div>';
+      '<button class="seg" data-nbact="reloc">再取得</button></div>';
   }
   if(S.phase==='idle'){
     h+='<div class="card"><h4>使い方</h4><p class="prose" style="color:var(--dim)">'+
       '上のカテゴリーをタップすると、現在地の周辺を検索して近い順に表示します。\n'+
       '行をタップすると詳細、右のピンで Google マップがそのまま開きます。\n'+
+      '詳細画面では Google の評価・クチコミも表示できます（APIキー設定時）。\n'+
       '位置情報はこの端末でのみ使用し、保存されません。</p></div>';
   }else if(S.phase==='locating'){
     h+='<div class="empty">現在地を取得しています…</div>';
@@ -729,11 +733,94 @@ function showNearbySpot(it){
   if(web)h+='<div class="card"><h4>リンク</h4><a class="lnk" href="'+esc(web)+'" target="_blank" rel="noopener">'+
     ic('link')+'<span class="lnk-b"><span class="lnk-t">公式サイト</span>'+
     '<span class="lnk-s">'+esc(String(web).replace(/^https?:\/\//,''))+'</span></span></a></div>';
-  h+='<a class="btn" href="'+esc(Nearby.gmaps(it))+'" target="_blank" rel="noopener">Google マップで開く</a>';
+  h+='<div class="card" id="gRev" data-for="'+esc(it.id)+'"><h4>Google の評価・クチコミ</h4>'+
+    (Nearby.hasGoogleKey()
+      ?'<p class="prose" style="color:var(--dim)">取得中…</p>'
+      :'<p class="prose" style="color:var(--dim)">Google Maps の API キーを設定すると、ここに評価とクチコミを表示します。'+
+       '個人利用なら通常は無料枠に収まります。</p>'+
+       '<button class="btn sec" id="gKeyBtn" style="margin-top:10px">APIキーを設定</button>')+
+    '</div>';
+  h+='<a class="btn" id="gmapsBtn" href="'+esc(Nearby.gmaps(it))+'" target="_blank" rel="noopener">Google マップで開く</a>';
   h+='<a class="btn sec" href="'+esc(Nearby.gmapsDir(it))+'" target="_blank" rel="noopener">経路案内（Google マップ）</a>';
   h+='<div class="footn">データ: © OpenStreetMap contributors · 実際の営業状況と異なる場合があります</div>';
   dBody.innerHTML=h;dBody.scrollTop=0;
   det.classList.add('show');det.setAttribute('aria-hidden','false');
+  var kb=document.getElementById('gKeyBtn');
+  if(kb)kb.onclick=openGoogleKeySheet;
+  if(Nearby.hasGoogleKey())loadGoogleReviews(it);
+}
+/* Google のクチコミを詳細カードへ流し込む。取得中に別の詳細へ移った場合は
+ * data-for の照合で古い結果を捨てる。 */
+function stars(n){return new Array(Math.max(0,Math.round(n))+1).join('★')}
+function loadGoogleReviews(it){
+  Nearby.googlePlace(it).then(function(p){
+    var card=document.getElementById('gRev');
+    if(!card||card.getAttribute('data-for')!==it.id)return;
+    if(!p){
+      card.innerHTML='<h4>Google の評価・クチコミ</h4>'+
+        '<p class="prose" style="color:var(--dim)">Google 上で該当する場所が見つかりませんでした。</p>';
+      return;
+    }
+    var h='<h4>Google の評価・クチコミ</h4>';
+    h+='<div class="kv"><span class="k">評価</span><span class="v">'+
+      (p.rating?'★ '+p.rating.toFixed(1)+'（'+(p.userRatingCount||0).toLocaleString()+'件）':'評価なし')+'</span></div>';
+    if(p.currentOpeningHours&&p.currentOpeningHours.openNow!==undefined)
+      h+='<div class="kv"><span class="k">現在</span><span class="v">'+
+        (p.currentOpeningHours.openNow?'営業中':'営業時間外')+'</span></div>';
+    var rvs=p.reviews||[];
+    rvs.slice(0,4).forEach(function(rv){
+      var name=(rv.authorAttribution&&rv.authorAttribution.displayName)||'匿名';
+      var txt=(rv.text&&rv.text.text)||(rv.originalText&&rv.originalText.text)||'';
+      if(txt.length>220)txt=txt.slice(0,220)+'…';
+      h+='<div class="grev"><div class="gh"><span class="gn">'+esc(name)+'</span>'+
+        '<span class="gs">'+stars(rv.rating||0)+'</span>'+
+        '<span class="gt">'+esc(rv.relativePublishTimeDescription||'')+'</span></div>'+
+        (txt?'<div class="gb">'+esc(txt)+'</div>':'')+'</div>';
+    });
+    if(!rvs.length)h+='<p class="prose" style="color:var(--dim);margin-top:8px">クチコミはまだありません。</p>';
+    h+='<div class="kv"><span class="k">提供</span><span class="v">Google</span></div>';
+    card.innerHTML=h;
+    // Google 側の正確な場所ページが分かったら、開くボタンをそこへ差し替える
+    if(p.googleMapsUri&&/^https:\/\//.test(p.googleMapsUri)){
+      var gb=document.getElementById('gmapsBtn');
+      if(gb)gb.href=p.googleMapsUri;
+    }
+  }).catch(function(e){
+    var card=document.getElementById('gRev');
+    if(!card||card.getAttribute('data-for')!==it.id)return;
+    card.innerHTML='<h4>Google の評価・クチコミ</h4>'+
+      '<p class="prose" style="color:var(--ember)">'+esc((e&&e.message)||'取得に失敗しました')+'</p>'+
+      '<button class="btn sec" id="gKeyBtn" style="margin-top:10px">APIキーを設定し直す</button>';
+    var kb=document.getElementById('gKeyBtn');
+    if(kb)kb.onclick=openGoogleKeySheet;
+  });
+}
+function openGoogleKeySheet(){
+  var has=Nearby.hasGoogleKey();
+  sheet.innerHTML='<h3>Google クチコミ連携</h3>'+
+    '<div class="sh">Places API (New) の API キーをこの端末にだけ保存します</div>'+
+    '<label class="fl">Google Maps API キー</label>'+
+    '<input type="password" id="gKeyIn" placeholder="'+(has?'保存済み（変更するときだけ入力）':'AIza...')+'">'+
+    '<p class="prose" style="font-size:11.5px;color:var(--faint);margin-top:10px">'+
+    'Google Cloud で「Places API (New)」を有効化したキーを入力してください。'+
+    'キーは HTTP リファラでこのサイトに限定することを推奨します。'+
+    'キーはこの端末のブラウザにだけ保存され、Google 以外には送信されません。</p>'+
+    '<button class="btn" id="gKeySave">保存</button>'+
+    (has?'<button class="btn sec" id="gKeyClear">キーを削除</button>':'')+
+    '<button class="btn sec" id="fCancel">閉じる</button>';
+  mask.classList.add('show');sheet.scrollTop=0;
+  document.getElementById('fCancel').onclick=function(){mask.classList.remove('show')};
+  document.getElementById('gKeySave').onclick=function(){
+    var v=document.getElementById('gKeyIn').value.trim();
+    if(v)Nearby.setGoogleKey(v);
+    mask.classList.remove('show');
+    if(curDet&&curDet.nb)showNearbySpot(curDet.nb);   // 開いていた詳細に即反映
+  };
+  var gc=document.getElementById('gKeyClear');
+  if(gc)gc.onclick=function(){
+    Nearby.setGoogleKey('');mask.classList.remove('show');
+    if(curDet&&curDet.nb)showNearbySpot(curDet.nb);
+  };
 }
 
 // ---- detail
@@ -909,7 +996,7 @@ function showDetail(i){
 }
 /* 用語の解説。検索の一覧には出さず、リンクからだけ開く。 */
 function showTerm(name){
-  var t=TERMS[name];if(!t)return;
+  var t=TERMS[name];if(!t){hideDetail();return}
   dSec.textContent='用語';
   dTrash.style.display='none';dEdit.style.display='none';
   var h='<h1 class="dtitle">'+esc(t.t)+'</h1>';
@@ -1186,12 +1273,12 @@ function bind(){
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
     root.querySelectorAll('[data-nbcat]').forEach(function(el){el.onclick=function(){
-      Nearby.select(el.getAttribute('data-nbcat'),render)}});
+      Nearby.select(el.getAttribute('data-nbcat'),nbUpd)}});
     root.querySelectorAll('[data-nb]').forEach(function(el){el.onclick=function(){
       var it=NB_LIST[+el.getAttribute('data-nb')];if(it)openNearbySpot(it)}});
     root.querySelectorAll('[data-nbact]').forEach(function(el){el.onclick=function(){
-      if(el.getAttribute('data-nbact')==='reloc')Nearby.relocate(render);
-      else Nearby.retry(render)}});
+      if(el.getAttribute('data-nbact')==='reloc')Nearby.relocate(nbUpd);
+      else Nearby.retry(nbUpd)}});
   });
   var p=document.getElementById('photoRow');if(p)p.onclick=openPhotos;
   var g=document.getElementById('ghRow');if(g)g.onclick=openSettings;

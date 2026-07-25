@@ -18,6 +18,9 @@ window.Nearby = (function () {
     'https://overpass-api.de/api/interpreter'
   ];
   var LS_MIRROR = 'lifehub.nbMirror';   // 直近で成功したミラー（次回はここから試す）
+  /* サーバーに要求する最大件数。Overpass の件数制限は距離順ではなく ID/タイル順で
+   * 打ち切られるため、少ないと「最寄りが欠ける」。大きめに取り、選別は手元で行う。 */
+  var OUT_LIMIT = 300;
 
   /* カテゴリー定義。q は Overpass のタグフィルタ（node/way 両方に適用）。
    * r は初期半径(m)。0件に近いときは自動で3倍(上限50km)に広げて1回だけ再検索する。
@@ -37,8 +40,9 @@ window.Nearby = (function () {
       q: ['["amenity"="toilets"]'] },
     { k: 'eki',   n: '道の駅',           e: '🛣',  r: 20000,
       /* 道の駅は「name に道の駅」を正とし、SA/PA(highway=services/rest_area)も拾う。
-       * バス停の「道の駅前」などは除外する。 */
-      q: ['["name"~"道の駅"]["highway"!~"^(bus_stop|platform)$"]["public_transport"!~"."]',
+       * 「道の駅◯◯前」のバス停・信号・横断歩道などは highway/public_transport タグを
+       * 持つので、名前検索側からはそれらを丸ごと除外する（SA/PA は後ろの2つが拾う）。 */
+      q: ['["name"~"道の駅"]["highway"!~"."]["public_transport"!~"."]',
           '["highway"="rest_area"]', '["highway"="services"]'] },
     { k: 'super', n: 'スーパー',         e: '🛒',  r: 2000,
       q: ['["shop"="supermarket"]'] },
@@ -84,12 +88,20 @@ window.Nearby = (function () {
   }
 
   /* 画面を開いた時に裏で現在地だけ温めておく（1タップ目を速くする）。
+   * ただし許可ダイアログは「画面を開いただけ」では出さない — 既に許可済みの
+   * ときだけ動く。Permissions API が無い環境では最初のタップまで何もしない。
    * 失敗しても黙っておき、実際の検索時に改めてエラーを出す。 */
   function warm(onUpdate) {
     if (warming || state.loc) return;
+    if (!(navigator.permissions && navigator.permissions.query)) return;
     warming = true;
-    getLoc(false).then(function () { warming = false; onUpdate && onUpdate(); },
-                       function () { warming = false; });
+    try {
+      navigator.permissions.query({ name: 'geolocation' }).then(function (st) {
+        if (st.state !== 'granted') { warming = false; return; }
+        getLoc(false).then(function () { warming = false; onUpdate && onUpdate(); },
+                           function () { warming = false; });
+      }, function () { warming = false; });
+    } catch (e) { warming = false; }
   }
 
   // ---- Overpass -----------------------------------------------------------
@@ -98,22 +110,36 @@ window.Nearby = (function () {
    * Accept は CORS セーフリストのヘッダなのでプリフライトも発生しない。 */
   function get(url, q, ms) {
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var t = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
-    return fetch(url + '?data=' + encodeURIComponent(q), {
-      headers: { Accept: 'application/json' },
-      signal: ctl ? ctl.signal : undefined
-    }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json().catch(function () { throw new Error('不正な応答'); });
-    }).then(function (j) { if (t) clearTimeout(t); return j; },
-            function (e) { if (t) clearTimeout(t); throw e; });
+    /* タイムアウトは AbortController の有無に依存させない（無い環境で無限に
+     * 待たないよう、reject する側のタイマーを常に持つ）。abort は後片付け。 */
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () {
+        var e = new Error('timeout'); e.name = 'AbortError';
+        reject(e);
+        if (ctl) ctl.abort();
+      }, ms);
+      fetch(url + '?data=' + encodeURIComponent(q), {
+        headers: { Accept: 'application/json' },
+        signal: ctl ? ctl.signal : undefined
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json().catch(function () { throw new Error('不正な応答'); });
+      }).then(function (j) {
+        clearTimeout(t);
+        /* Overpass はサーバー側の timeout / メモリ超過でも HTTP 200 + remark で
+         * 返すことがある。成功扱いにすると「0件」に化けるので失敗として次へ。 */
+        if (j && j.remark && /timed out|error/i.test(String(j.remark)))
+          throw new Error('サーバー側エラー');
+        resolve(j);
+      }).catch(function (e) { clearTimeout(t); reject(e); });
+    });
   }
   /* 失敗理由を「どのサーバーが・なぜ」まで残す。エラーカードに出すことで、
    * 手元で再現できない環境でもスクリーンショットから原因を特定できる。 */
   function failReason(e) {
     if (e && e.name === 'AbortError') return 'タイムアウト';
     if (e && /^HTTP \d+$/.test(e.message || '')) return e.message;
-    if (e && e.message === '不正な応答') return e.message;
+    if (e && (e.message === '不正な応答' || e.message === 'サーバー側エラー')) return e.message;
     return '接続エラー';
   }
   /* 公開サーバーは混雑でキュー待ちが長いことがある（実機で 504 / 14秒超を確認）。
@@ -157,11 +183,15 @@ window.Nearby = (function () {
   }
   function buildQuery(cat, loc, r) {
     var ll = r + ',' + loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5);
+    /* nwr で node / way / relation を全部拾う（道の駅・病院・モールは
+     * relation で描かれていることがある）。out center が代表点を返す。 */
     var lines = cat.q.map(function (f) {
-      return 'node' + f + '(around:' + ll + ');way' + f + '(around:' + ll + ');';
+      return 'nwr' + f + '(around:' + ll + ');';
     }).join('');
-    /* timeout はサーバー側のキュー待ちを見込んで長めにする（混雑時対策） */
-    return '[out:json][timeout:25];(' + lines + ');out center 80;';
+    /* timeout はサーバー側のキュー待ちを見込んで長めにする（混雑時対策）。
+     * qt はタイル順ソート（ID 順より軽い）。上限は「打ち切りをほぼ起こさない」
+     * ために大きめに取る。距離順の選別はクライアント側で行う。 */
+    return '[out:json][timeout:25];(' + lines + ');out center qt ' + OUT_LIMIT + ';';
   }
 
   // ---- 整形 ---------------------------------------------------------------
@@ -250,9 +280,11 @@ window.Nearby = (function () {
     };
   }
 
-  /* node と way の二重登録などの重複を、同名かつ150m以内で1つにまとめる */
+  /* node と way の二重登録などの重複を、同名かつ150m以内で1つにまとめる。
+   * seen は OSM の name をそのままキーにするため、'constructor' などの名前で
+   * 継承プロパティを踏まないよう prototype の無いオブジェクトを使う。 */
   function dedupe(items) {
-    var out = [], seen = {};
+    var out = [], seen = Object.create(null);
     items.forEach(function (it) {
       if (it.name) {
         var arr = seen[it.name] || (seen[it.name] = []);
@@ -266,15 +298,25 @@ window.Nearby = (function () {
   }
 
   // ---- 検索本体 -----------------------------------------------------------
-  function runSearch(cat, loc, r, expanded) {
+  function runSearch(cat, loc, r, expanded, shrunk) {
     return overpass(buildQuery(cat, loc, r)).then(function (j) {
-      var items = (j.elements || []).map(function (el) { return normalize(el, cat, loc); })
+      var els = j.elements || [];
+      /* 上限いっぱい返ってきたら打ち切りの可能性が高い（打ち切りは距離順ではない
+       * ため最寄りが欠けうる）。半径を半分に絞って取り直す（最大2回・下限500m）。 */
+      if (els.length >= OUT_LIMIT && !expanded && (shrunk || 0) < 2 && r > 500) {
+        return runSearch(cat, loc, Math.round(r / 2), false, (shrunk || 0) + 1);
+      }
+      var items = els.map(function (el) { return normalize(el, cat, loc); })
         .filter(Boolean)
         .sort(function (a, b) { return a.dist - b.dist; });
       items = dedupe(items).slice(0, 40);
-      if (items.length < 3 && !expanded) {
+      if (items.length < 3 && !expanded && !shrunk) {
         var r2 = Math.min(r * 3, 50000);
-        if (r2 > r) return runSearch(cat, loc, r2, true);
+        if (r2 > r) return runSearch(cat, loc, r2, true, 0).then(function (res2) {
+          /* 半径を広げたのに減った（サーバー側の揺らぎ等）なら元の結果を残す */
+          return res2.items.length > items.length ? res2
+               : { items: items, radius: r, expanded: false };
+        });
       }
       return { items: items, radius: r, expanded: !!expanded };
     });
@@ -300,7 +342,7 @@ window.Nearby = (function () {
       }
       state.phase = 'loading';
       if (onUpdate) onUpdate();
-      return runSearch(cat, loc, cat.r, false).then(function (res) {
+      return runSearch(cat, loc, cat.r, false, 0).then(function (res) {
         if (my !== seq) return;
         cache[ck] = { items: res.items, radius: res.radius, expanded: res.expanded, at: Date.now() };
         state.items = res.items; state.radius = res.radius; state.expanded = res.expanded; state.phase = 'ok';
@@ -339,6 +381,62 @@ window.Nearby = (function () {
     else { state.phase = 'idle'; if (onUpdate) onUpdate(); }
   }
 
+  // ---- Google クチコミ（任意・APIキー設定時のみ） ---------------------------
+  /* Places API (New) の Text Search 1回で、OSM の名前＋座標から Google 側の
+   * 場所を引き当て、評価・クチコミ・営業状況を取る。キーはこの端末の
+   * localStorage にだけ保存し、Google 以外には送らない。 */
+  var LS_GKEY = 'lifehub.gmapsKey';
+  var gCache = {};
+  function hasGoogleKey() { try { return !!localStorage.getItem(LS_GKEY); } catch (e) { return false; } }
+  function setGoogleKey(k) {
+    try {
+      if (k) localStorage.setItem(LS_GKEY, k);
+      else localStorage.removeItem(LS_GKEY);
+    } catch (e) {}
+    gCache = {};
+  }
+  function googlePlace(it) {
+    var key = '';
+    try { key = localStorage.getItem(LS_GKEY) || ''; } catch (e) {}
+    if (!key) return Promise.reject(new Error('APIキーが未設定です'));
+    var c = gCache[it.id];
+    if (c && Date.now() - c.at < 600000) return Promise.resolve(c.place);
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () {
+        reject(new Error('タイムアウト'));
+        if (ctl) ctl.abort();
+      }, 12000);
+      fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount,' +
+            'places.reviews,places.currentOpeningHours.openNow,places.googleMapsUri'
+        },
+        body: JSON.stringify({
+          textQuery: it.name || it.title,
+          languageCode: 'ja',
+          pageSize: 1,
+          locationBias: { circle: { center: { latitude: it.lat, longitude: it.lng }, radius: 250 } }
+        }),
+        signal: ctl ? ctl.signal : undefined
+      }).then(function (r) {
+        if (r.status === 400 || r.status === 403)
+          throw new Error('APIキーが無効か、Places API (New) が有効化されていません（HTTP ' + r.status + '）');
+        if (r.status === 429) throw new Error('リクエスト上限に達しました（HTTP 429）。時間をおいてお試しください');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (j) {
+        clearTimeout(t);
+        var p = (j.places && j.places[0]) || null;
+        gCache[it.id] = { place: p, at: Date.now() };
+        resolve(p);
+      }).catch(function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+
   // ---- Google マップ連携 ---------------------------------------------------
   /* 名前 + 座標で検索すると、Google 側でその場所の店舗ページに解決される。
    * 名前が無い場所は座標ピンで開く。 */
@@ -356,6 +454,7 @@ window.Nearby = (function () {
     CATS: CATS, state: state,
     select: select, relocate: relocate, retry: retry, warm: warm,
     fmtDist: fmtDist, gmaps: gmaps, gmapsDir: gmapsDir,
-    addr: addr, hoursJa: hoursJa, cuisineJa: cuisineJa
+    addr: addr, hoursJa: hoursJa, cuisineJa: cuisineJa,
+    hasGoogleKey: hasGoogleKey, setGoogleKey: setGoogleKey, googlePlace: googlePlace
   };
 })();
