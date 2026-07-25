@@ -341,6 +341,30 @@ function render(){
 /* トップの「トピック」: 全セクション＋予定から3件を日替わりでランダムに選ぶ。
  * 乱数は日付でシードし、3秒ごとの同期再描画で中身が入れ替わらないようにする。
  * セクションが偏らないよう、まずセクションを混ぜて1件ずつ拾う。 */
+/* 1件のデータを話し言葉の1行文にする。列は分けず「・〜だよ」の形で出す。 */
+function topicSentence(x){
+  var WORK={anime:'アニメ',tv:'ドラマ',movies:'映画'};
+  if(WORK[x.s]){
+    if(x.st==='upcoming')return x.t+'（'+WORK[x.s]+'）がもうすぐ始まるよ';
+    if(x.nw)return x.t+'の新しい話が来てるよ';
+    if(x.st==='watching')return x.t+'の続き、見ようよ';
+    return x.t+'（'+WORK[x.s]+'）が配信中だよ';
+  }
+  if(x.s==='mail')return x.unread?'「'+x.t+'」ってメールが未読だよ':'「'+x.t+'」ってメールが来てたよ';
+  if(x.s==='news')return '「'+x.t+'」っていうニュースがあるよ';
+  if(x.s==='search')return x.t+'の解説ページができてるよ';
+  if(x.s==='meal'){
+    var p=String(x.t).split(' · ');
+    return p.length>1?'この前の'+p[0]+'は'+p.slice(1).join(' · ')+'だったね':x.t+'を記録してるよ';
+  }
+  return x.t;
+}
+function evSentence(e,td0){
+  if(e.type==='task')
+    return e.d===td0?'今日が'+e.n+'の締切だよ':e.d.slice(5)+'までに'+e.n+'だよ';
+  var t=(e.time&&e.time!=='—')?e.time+'から':'';
+  return e.d===td0?'今日'+(t||'は')+e.n+'だよ':e.d.slice(5)+'に'+e.n+'があるよ';
+}
 function pickTopics(){
   var seed=0,ds=fD(TODAY);
   for(var i=0;i<ds.length;i++)seed=((seed*31+ds.charCodeAt(i))>>>0);
@@ -348,12 +372,19 @@ function pickTopics(){
   var td0=ds;
   var bySec={};
   D.forEach(function(x){
-    if(x.gone)return;
-    (bySec[x.s]=bySec[x.s]||[]).push({sec:sn(x.s),t:x.t});
+    if(x.gone||x.id==='meal-weight')return;
+    (bySec[x.s]=bySec[x.s]||[]).push(topicSentence(x));
   });
   var up=EV.filter(function(e){return e.d>=td0&&!e.done});
-  if(up.length)bySec.schedule=up.map(function(e){
-    return {sec:'予定',t:e.n+'（'+e.d.slice(5)+'）'}});
+  if(up.length)bySec.schedule=up.map(function(e){return evSentence(e,td0)});
+  // 天気が取れていれば候補に足す（位置情報の許可がある端末のみ）
+  var f=FORECAST[td0];
+  if(f){
+    bySec.weather=[f.max>=35?'今日は最高'+Math.round(f.max)+'°の猛暑だから気をつけてね'
+      :f.max>=30?'今日は最高'+Math.round(f.max)+'°まで上がるよ、水分とってね'
+      :f.pop>=50?'今日は雨の確率'+f.pop+'%だから傘持ってね'
+      :'今日の天気は'+f.icon+'で最高'+Math.round(f.max)+'°だよ'];
+  }
   var keys=Object.keys(bySec);
   for(var i=keys.length-1;i>0;i--){var j=Math.floor(rnd()*(i+1));var t=keys[i];keys[i]=keys[j];keys[j]=t}
   return keys.slice(0,3).map(function(k){
@@ -375,12 +406,12 @@ function renderHome(){
   }
   var ur=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var h='<div class="greet"><div class="d">'+dayLabel(TODAY)+'</div></div>';
-  // 日替わりでランダムに選んだ3件だけをシンプルに出す（リンクなし）
+  // 日替わりでランダムに選んだ3件を「・〜だよ」の1行文で出す（リンクなし）
   var picks=pickTopics();
   if(picks.length)
     h+='<div class="card" style="margin-bottom:12px"><h4>トピック</h4>'+
-      picks.map(function(p){
-        return '<div class="kv"><span class="k">'+esc(p.sec)+'</span><span class="v">'+esc(p.t)+'</span></div>';
+      picks.map(function(s){
+        return '<div style="font-size:13px;line-height:1.8">・'+esc(s)+'</div>';
       }).join('')+'</div>';
   // 今日の予定・タスクを実データから拾う（DAY → TASK → 時間順）
   var td=fD(TODAY);
