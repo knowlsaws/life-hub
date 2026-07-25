@@ -6,10 +6,14 @@
  * 位置情報はこの端末でのみ使い、どこにも保存・送信しない（検索座標を除く）。
  */
 window.Nearby = (function () {
+  /* 全球データを持つミラーを先に。overpass-api.de 本家は 2025 年以降
+   * ボット対策で機械的なリクエストに 406 を返すことがあるため最後に回す。
+   * openstreetmap.jp は日本コミュニティ運営（低遅延だが対象は日本中心）。 */
   var MIRRORS = [
-    'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.osm.jp/api/interpreter'
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.openstreetmap.jp/api/interpreter',
+    'https://overpass-api.de/api/interpreter'
   ];
 
   /* カテゴリー定義。q は Overpass のタグフィルタ（node/way 両方に適用）。
@@ -46,8 +50,10 @@ window.Nearby = (function () {
   ];
 
   /* phase: idle | locating | loading | ok | error
-   * expanded: 0件に近く、半径を自動で広げて再検索した結果かどうか */
-  var state = { phase: 'idle', cat: '', items: [], radius: 0, expanded: false, error: '', loc: null, locAt: 0 };
+   * expanded: 0件に近く、半径を自動で広げて再検索した結果かどうか
+   * errorDetail: ミラーごとの失敗理由（画面に小さく出して原因調査に使う） */
+  var state = { phase: 'idle', cat: '', items: [], radius: 0, expanded: false,
+                error: '', errorDetail: '', loc: null, locAt: 0 };
   var cache = {}, seq = 0, warming = false;
 
   function catByKey(k) {
@@ -82,25 +88,42 @@ window.Nearby = (function () {
   }
 
   // ---- Overpass -----------------------------------------------------------
-  function post(url, body, ms) {
+  /* クエリは短いので GET（共有リンクと同じ形式）で送る。POST よりも
+   * 「人が使う形」に近く、本家のボット対策フィルタに弾かれにくい。
+   * Accept は CORS セーフリストのヘッダなのでプリフライトも発生しない。 */
+  function get(url, q, ms) {
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var t = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(body),
+    return fetch(url + '?data=' + encodeURIComponent(q), {
+      headers: { Accept: 'application/json' },
       signal: ctl ? ctl.signal : undefined
     }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+      return r.json().catch(function () { throw new Error('不正な応答'); });
     }).then(function (j) { if (t) clearTimeout(t); return j; },
             function (e) { if (t) clearTimeout(t); throw e; });
   }
+  /* 失敗理由を「どのサーバーが・なぜ」まで残す。エラーカードに出すことで、
+   * 手元で再現できない環境でもスクリーンショットから原因を特定できる。 */
+  function failReason(e) {
+    if (e && e.name === 'AbortError') return 'タイムアウト';
+    if (e && /^HTTP \d+$/.test(e.message || '')) return e.message;
+    if (e && e.message === '不正な応答') return e.message;
+    return '接続エラー';
+  }
   function overpass(q) {
-    var i = 0;
+    var i = 0, fails = [];
     function next() {
-      if (i >= MIRRORS.length) return Promise.reject(new Error('検索サーバーに接続できませんでした。時間をおいて再試行してください。'));
-      return post(MIRRORS[i++], q, 14000).catch(next);
+      if (i >= MIRRORS.length) {
+        var err = new Error('検索サーバーに接続できませんでした。時間をおいて再試行してください。');
+        err.detail = fails.join(' · ');
+        return Promise.reject(err);
+      }
+      var url = MIRRORS[i++];
+      return get(url, q, 14000).catch(function (e) {
+        fails.push(url.replace(/^https:\/\//, '').split('/')[0] + ': ' + failReason(e));
+        return next();
+      });
     }
     return next();
   }
@@ -234,7 +257,7 @@ window.Nearby = (function () {
     if (!cat) return;
     var my = ++seq;
     state.cat = key;
-    state.error = '';
+    state.error = ''; state.errorDetail = '';
     state.phase = (state.loc && Date.now() - state.locAt < 120000) ? 'loading' : 'locating';
     if (onUpdate) onUpdate();
     getLoc(false).then(function (loc) {
@@ -258,6 +281,7 @@ window.Nearby = (function () {
       if (my !== seq) return;
       state.phase = 'error';
       state.error = (e && e.message) || 'エラーが発生しました';
+      state.errorDetail = (e && e.detail) || '';
       if (onUpdate) onUpdate();
     });
   }
@@ -266,7 +290,7 @@ window.Nearby = (function () {
   function relocate(onUpdate) {
     var my = ++seq;
     state.phase = 'locating';
-    state.error = '';
+    state.error = ''; state.errorDetail = '';
     if (onUpdate) onUpdate();
     getLoc(true).then(function () {
       if (my !== seq) return;
@@ -276,6 +300,7 @@ window.Nearby = (function () {
       if (my !== seq) return;
       state.phase = 'error';
       state.error = (e && e.message) || 'エラーが発生しました';
+      state.errorDetail = (e && e.detail) || '';
       if (onUpdate) onUpdate();
     });
   }
