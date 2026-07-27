@@ -6,6 +6,7 @@ var ICON={
  tv:'<rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8"/>',
  movies:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18"/>',
  meal:'<path d="M4 3v8a3 3 0 0 0 6 0V3M7 3v18M17 3c-1.5 0-2 3-2 6s.5 5 2 5 2-2 2-5-.5-6-2-6zM17 14v7"/>',
+ essentials:'<path d="M6 8h12l1 12H5L6 8z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/>',
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
@@ -31,7 +32,7 @@ function fD(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate(
 function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
-  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -286,7 +287,7 @@ function byTimeDesc(a,b){return a.time<b.time?1:(a.time>b.time?-1:0)}
 function byRateDesc(a,b){return (b.rate||0)-(a.rate||0)}
 function sortItems(items,sec){
   if(sec==='anime'||sec==='tv'||sec==='movies')return items.sort(byRateDesc);
-  if(sec==='mail'||sec==='news'||sec==='search')return items.sort(byTimeDesc);
+  if(sec==='mail'||sec==='news'||sec==='search'||sec==='essentials')return items.sort(byTimeDesc);
   return items;
 }
 
@@ -330,6 +331,7 @@ function render(){
   else if(view==='meal')r=renderMeal();
   else if(view==='news')r=renderNews();
   else if(view==='search')r=renderSearch();
+  else if(view==='essentials')r=renderEssentials();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
   scroll.innerHTML=(r.body||'')+'<div class="footn">GitHub のみで完結 · manifest 監視 3秒</div>';
@@ -353,6 +355,7 @@ function topicSentence(x){
   if(x.s==='mail')return x.unread?'「'+x.t+'」ってメールが未読だよ':'「'+x.t+'」ってメールが来てたよ';
   if(x.s==='news')return '「'+x.t+'」っていうニュースがあるよ';
   if(x.s==='search')return x.t+'の解説ページができてるよ';
+  if(x.s==='essentials')return x.t+'、必需品リストに入ってるよ';
   if(x.s==='meal'){
     var p=String(x.t).split(' · ');
     return p.length>1?'この前の'+p[0]+'は'+p.slice(1).join(' · ')+'だったね':x.t+'を記録してるよ';
@@ -703,6 +706,18 @@ function renderSearch(){
   h+='<div class="card" style="margin-top:12px"><h4>用語辞書</h4>'+
     '<div class="kv"><span class="k">登録語数</span><span class="v">'+nTerms+' 語</span></div>'+
     '<div class="kv"><span class="k">使い方</span><span class="v">本文中の語をタップ</span></div></div>';
+  return {act:act,body:h};
+}
+
+/* 人生の必需品リスト。製品名だけ登録すると、値段・消耗頻度・購入場所・類似製品を
+ * パイプラインの AI が調べて記入する（.web/essentials.json で配信）。 */
+function renderEssentials(){
+  var items=sortItems(D.filter(function(x){return x.s==='essentials'&&match(x)}),'essentials');
+  var act='<div class="actbar"><button class="act" data-form="essential">'+ic('plus')+'必需品を登録</button></div>';
+  var h='<div class="sechead"><span class="n">これまで使ってきたもの</span><span class="c">'+items.length+' 件</span></div>'+
+    '<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
+  if(!items.length)h+='<div class="empty">まだ登録がありません。製品名だけ登録すれば、'+
+    '値段・消耗頻度・購入場所・類似製品を AI が調べて記入します。</div>';
   return {act:act,body:h};
 }
 
@@ -1105,7 +1120,9 @@ var FORMS={
  photo:{h:'写真で登録',s:'画像をアップロードすると AI が料理・食材・栄養素を解析します',
    f:[['画像','file',''],['メモ（任意）','text','すき家で昼食']]},
  research:{h:'調べてほしい内容を登録',s:'初心者向けに画像付きで解説し、用語ページも自動生成します',
-   f:[['調べたい内容','text','量子コンピュータ']]}
+   f:[['調べたい内容','text','量子コンピュータ']]},
+ essential:{h:'必需品を登録',s:'製品名だけで OK。値段・消耗頻度・購入場所・類似製品は AI が調べて記入します',
+   f:[['製品名','text','例: ジレット フュージョン 替刃 8個入']]}
 };
 var placeTimer=null;
 function confirmDelete(name,onYes){
@@ -1280,6 +1297,8 @@ function openForm(k,prefill,opts){
       if(photoData.length)payload['画像']=photoData.slice();
       if(k==='photo'&&!(payload['画像']&&payload['画像'].length))
         return flash('画像を選択してください');
+      if(k==='essential'&&!String(payload['製品名']||'').trim())
+        return flash('製品名を入力してください');
     }
     if(!GH.hasToken()){
       btn.textContent='デモモードです — 右上から接続設定を行ってください';
@@ -1414,7 +1433,7 @@ function toggleDone(id){
 
 function openAddMenu(){
   var opts=[['event','予定を登録'],['task','タスクを登録'],['recurring','定期予定を登録'],['meal','食事を記録'],
-            ['photo','写真で登録'],['research','調べてほしい内容を登録']];
+            ['photo','写真で登録'],['essential','必需品を登録'],['research','調べてほしい内容を登録']];
   sheet.innerHTML='<h3>登録</h3><div class="sh">どこからでも登録できます</div>'+
     opts.map(function(o){return '<button class="act" style="width:100%;margin-top:8px;justify-content:flex-start" data-open="'+o[0]+'">'+ic('plus')+esc(o[1])+'</button>'}).join('')+
     '<button class="btn sec" id="fCancel">キャンセル</button>';
@@ -1589,7 +1608,7 @@ app.addEventListener('touchend',function(){tr=false});
  * セクション JSON を取り直す。1 ファイルなら 1,200 req/h 程度で、
  * 認証済みの上限 5,000 req/h に十分収まる。
  */
-var SECKEYS=['mail','schedule','anime','tv','movies','meal','news','search'];
+var SECKEYS=['mail','schedule','anime','tv','movies','meal','essentials','news','search'];
 
 function setSync(txt,ok){
   document.getElementById('syncTxt').textContent=txt;
