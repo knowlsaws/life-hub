@@ -7,6 +7,7 @@ var ICON={
  movies:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18"/>',
  meal:'<path d="M4 3v8a3 3 0 0 0 6 0V3M7 3v18M17 3c-1.5 0-2 3-2 6s.5 5 2 5 2-2 2-5-.5-6-2-6zM17 14v7"/>',
  essentials:'<path d="M6 8h12l1 12H5L6 8z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/>',
+ supra:'<path d="M3 15v-2.5L5.5 8H15l4 4.5h2V15"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4M3 15h2.7M18.3 15H21"/>',
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
@@ -32,7 +33,7 @@ function fD(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate(
 function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
-  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -355,6 +356,7 @@ function render(){
   else if(view==='news')r=renderNews();
   else if(view==='search')r=renderSearch();
   else if(view==='essentials')r=renderEssentials();
+  else if(view==='supra')r=renderSupra();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
   scroll.innerHTML=(r.body||'')+'<div class="footn">GitHub のみで完結 · manifest 監視 3秒</div>';
@@ -426,6 +428,13 @@ function renderHome(){
         if(e&&String(x.time).slice(0,10)===td)kc+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;
       });
       return [kc?('今日 '+kc.toLocaleString()+' kcal'):'今日の記録なし', upd||'—'];
+    }
+    if(k==='supra'){
+      var pr=xs.filter(function(x){return x.id==='supra-price'})[0];
+      var nx=xs.filter(function(x){return String(x.id||'').indexOf('supra-mnt-')===0})
+        .sort(function(a,b){return String(a.due||'')<String(b.due||'')?-1:1})[0];
+      var lbl=[pr?pr.t:'',nx?'次 '+nx.t:''].filter(Boolean).join(' · ');
+      return [lbl||xs.length+' 件', upd||'—'];
     }
     if(k==='anime'||k==='tv'||k==='movies'){
       var w=xs.filter(function(x){return x.st==='watching'}).length;
@@ -619,25 +628,28 @@ function renderMeal(){
     '<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
   return {act:act,body:h};
 }
-/* 体重の折れ線。データはパイプラインが渡した実測値のみを描く。
- * 予測線は出さない（根拠のある予測値を持っていないため）。 */
-function spark(series){
-  series=series||[];
+/* 実測値の折れ線（体重・買取相場などで共用）。データはパイプラインが渡した
+ * 実測値のみを描く。予測線は出さない（根拠のある予測値を持っていないため）。
+ * unit は表示単位（既定 kg）。万円のような整数単位では小数を出さない。 */
+function spark(series,unit){
+  series=series||[];unit=unit||'kg';
+  var intU=(unit==='万円'||unit==='円');
+  function fv(v){return intU?String(Math.round(v)):v.toFixed(1)}
   if(series.length<2)
     return '<p class="prose" style="color:var(--dim);font-size:12px">'+
-      (series.length?'記録が1件だけなのでグラフは表示できません。':'体重の記録がありません。')+'</p>';
+      (series.length?'記録が1件だけなのでグラフは表示できません。':'記録がまだありません。')+'</p>';
   var vs=series.map(function(p){return p[1]});
   var mx=Math.max.apply(null,vs),mn=Math.min.apply(null,vs),W=330,H=76;
   if(mx===mn){mx+=0.5;mn-=0.5}
   var pts=series.map(function(p,i){
     return (i/(series.length-1)*W).toFixed(1)+','+(H-(p[1]-mn)/(mx-mn)*H).toFixed(1)}).join(' ');
   var first=series[0],last=series[series.length-1];
-  var diff=(last[1]-first[1]).toFixed(1);
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:76px" role="img" aria-label="体重推移">'+
+  var diff=last[1]-first[1];
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:76px" role="img" aria-label="推移グラフ">'+
     '<polyline points="'+pts+'" fill="none" stroke="#CFA45C" stroke-width="1.6"/></svg>'+
     '<div class="kv" style="border-top:0;padding-top:6px"><span class="k">'+
     esc(first[0])+' 〜 '+esc(last[0])+'（'+series.length+'件）</span>'+
-    '<span class="v">'+last[1].toFixed(1)+' kg（'+(diff>0?'+':'')+diff+'）</span></div>';
+    '<span class="v">'+fv(last[1])+' '+esc(unit)+'（'+(diff>0?'+':'')+fv(diff)+'）</span></div>';
 }
 
 function renderNews(){
@@ -681,6 +693,57 @@ function renderEssentials(){
   if(!items.length)h+='<div class="empty">まだ登録がありません。製品名だけ登録すれば、'+
     '値段・消耗頻度・購入場所・類似製品を AI が調べて記入します。</div>';
   return {act:act,body:h};
+}
+
+/* スープラ専用メニュー。データはパイプラインが毎朝更新する .web/supra.json。
+ * 買取相場（推移グラフ）→ メンテナンススケジュール → ニュース → 早見表 の順。 */
+function renderSupra(){
+  var all=D.filter(function(x){return x.s==='supra'&&match(x)});
+  var price=all.filter(function(x){return x.id==='supra-price'})[0];
+  var mnt=all.filter(function(x){return String(x.id||'').indexOf('supra-mnt-')===0});
+  var news=all.filter(function(x){return String(x.id||'').indexOf('supra-news-')===0})
+    .sort(byTimeDesc);
+  var spec=all.filter(function(x){return x.id==='supra-spec'})[0];
+  var h='';
+  if(!all.length){
+    h+='<div class="empty">スープラのデータはまだありません。毎朝の自動更新で、'+
+      '買取相場・メンテナンス予定・ニュースがここに届きます。</div>';
+    return {act:'',body:h};
+  }
+  // 買取相場（現在値 + 推移グラフ + AI の見立て）
+  if(price){
+    var pd=price.d||{};
+    h+='<div class="card"><h4>買取相場</h4>'+
+      '<div class="kv"><span class="k">'+esc(((pd.kv||[])[0]||[])[1]||price.t)+
+      '</span><span class="v">'+esc(price.m)+'</span></div>'+
+      (pd.series?spark(pd.series,pd.graphUnit||'万円'):'')+
+      (pd.body?'<p class="prose" style="font-size:12.5px;color:var(--dim);margin-top:8px">'+
+        esc(pd.body)+'</p>':'')+'</div>';
+  }
+  // メンテナンス。期日順に並べ、期日はこの端末の今日から計算し直す（日次更新より正確）
+  if(mnt.length){
+    var td0=fD(TODAY);
+    mnt.sort(function(a,b){return String(a.due||'')<String(b.due||'')?-1:1});
+    h+='<div class="sechead"><span class="n">メンテナンススケジュール</span>'+
+      '<span class="c">'+mnt.length+' 件</span></div><div class="list">'+
+      mnt.map(function(x){
+        var days=x.due?Math.round((new Date(x.due.replace(/\//g,'-'))-new Date(td0.replace(/\//g,'-')))/864e5):null;
+        var badge=days==null?'':(days<0?'<span class="tag e">'+(-days)+'日超過</span>'
+          :days<=30?'<span class="tag g">あと'+days+'日</span>'
+          :'<span class="tag">あと'+days+'日</span>');
+        return '<button class="row" data-i="'+D.indexOf(x)+'">'+
+          '<span class="l"><span class="t">'+esc(x.t)+'</span><span class="m">'+esc(x.m)+'</span></span>'+
+          '<span class="r">'+badge+'<span class="time">'+esc(x.due||'')+'</span></span></button>';
+      }).join('')+'</div>';
+  }
+  // ニュース
+  h+='<div class="sechead"><span class="n">スープラのニュース</span><span class="c">'+
+    news.length+' 件</span></div>';
+  h+=news.length?'<div class="list">'+news.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>'
+    :'<div class="empty">直近のニュースはありません</div>';
+  // 早見表
+  if(spec)h+='<div class="list" style="margin-top:12px">'+rowHTML(spec,D.indexOf(spec))+'</div>';
+  return {act:'',body:h};
 }
 
 /* ---- 近くのスポット ------------------------------------------------------
@@ -964,7 +1027,8 @@ function showDetail(i){
   }
   if(d.kv)h+='<div class="card"><h4>詳細</h4>'+d.kv.map(function(r){
     return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>'}).join('')+'</div>';
-  if(d.graph)h+='<div class="card"><h4>体重推移</h4>'+spark(d.series)+'</div>';
+  if(d.graph)h+='<div class="card"><h4>'+esc(d.graphTitle||'体重推移')+'</h4>'+
+    spark(d.series,d.graphUnit)+'</div>';
   if(d.fig)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
     '<div class="kv" style="border-top:0"><span class="k">形式</span><span class="v">初心者向け · 画像付き</span></div></div>';
   if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+linkTerms(esc(d.body))+'</p></div>';
@@ -1626,7 +1690,7 @@ app.addEventListener('touchend',function(){tr=false});
  * セクション JSON を取り直す。1 ファイルなら 1,200 req/h 程度で、
  * 認証済みの上限 5,000 req/h に十分収まる。
  */
-var SECKEYS=['mail','schedule','anime','tv','movies','meal','essentials','news','search'];
+var SECKEYS=['mail','schedule','anime','tv','movies','meal','essentials','supra','news','search'];
 
 function setSync(txt,ok){
   document.getElementById('syncTxt').textContent=txt;
