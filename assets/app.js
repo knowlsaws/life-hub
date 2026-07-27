@@ -110,6 +110,29 @@ function linkTerms(escaped){
  * 端末の localStorage に即キャッシュし、未同期分(PENDING)は再試行で送る。 */
 var LS_STATE='lifehub.state',LS_PENDING='lifehub.statePending';
 var STATE={},PENDING={},TOUCHED={},stateTimer=null,stateSaving=false,stateFails=0;
+/* 必需品のローカル状態。登録した瞬間に「調査中」で一覧に出し（PENDING_ESS）、
+ * 削除はサーバー反映まで一覧から隠す（DEL_ESS=墓標）。どちらも端末に保存し、
+ * AI 調査済みの本物が届いたら pending を、サーバーから消えたら墓標を自動で外す。 */
+var PENDING_ESS=[],DEL_ESS=[];
+try{PENDING_ESS=JSON.parse(localStorage.getItem('lifehub.pendingEss')||'[]')||[]}catch(e){}
+try{DEL_ESS=JSON.parse(localStorage.getItem('lifehub.delEss')||'[]')||[]}catch(e){}
+function persistEss(){
+  try{localStorage.setItem('lifehub.pendingEss',JSON.stringify(PENDING_ESS));
+      localStorage.setItem('lifehub.delEss',JSON.stringify(DEL_ESS))}catch(e){}
+}
+function reconcileEssentials(){
+  var present={};
+  D.forEach(function(x){if(x.s==='essentials'&&x.id)present[x.id]=1});
+  // サーバーから消えた墓標は掃除、まだ残っているものは一覧から隠す
+  DEL_ESS=DEL_ESS.filter(function(id){return present[id]});
+  D=D.filter(function(x){return !(x.s==='essentials'&&DEL_ESS.indexOf(x.id)>-1)});
+  // 調査済みの本物が来た pending は外し、まだのものは一覧に出し続ける
+  PENDING_ESS=PENDING_ESS.filter(function(p){
+    return !D.some(function(x){return x.s==='essentials'&&x.t===p.t});
+  });
+  PENDING_ESS.forEach(function(p){D.unshift(p)});
+  persistEss();
+}
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
 
 function loadLocalState(){
@@ -939,6 +962,26 @@ function showDetail(i){
   if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';dEdit.style.display='none';dDone.style.display='none';
+  if(x.s==='essentials'){
+    // 必需品は削除できる。一覧から先に消し、削除要求は裏で送る
+    dTrash.style.display='grid';
+    dTrash.onclick=function(){
+      confirmDelete(x.t,function(){
+        var isLocal=String(x.id||'').indexOf('ess-local-')===0;
+        PENDING_ESS=PENDING_ESS.filter(function(p){return p!==x});
+        for(var j=D.length-1;j>=0;j--)if(D[j]===x)D.splice(j,1);
+        if(x.id&&!isLocal)DEL_ESS.push(x.id);   // サーバー反映まで一覧から隠す
+        persistEss();
+        histBack();
+        if(GH.hasToken())
+          GH.pushInbox('essential-delete',{id:isLocal?'':x.id,'製品名':x.t}).then(function(){
+            setSync('削除しました',true);
+          }).catch(function(err){
+            notify('削除の送信に失敗しました（'+err.message+'）。もう一度お試しください。',true);
+          });
+      });
+    };
+  }
   var h='';
   if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px">'+
     '<span class="po" style="width:74px;height:106px;font-size:26px">'+
@@ -1308,6 +1351,19 @@ function openForm(k,prefill,opts){
     // 先に画面へ反映して閉じ、GitHub への送信は裏で行う。
     // 反映まで待たされると操作が重く感じるため。
     var local=localEvent(k,payload);
+    // 必需品は「調査中」で即座に一覧へ。AI の記入が届いたら自動で置き換わる
+    var essPending=null;
+    if(k==='essential'&&!opts.editId){
+      var essName=String(payload['製品名']).trim();
+      essPending={s:'essentials',t:essName,m:'AI が調査中… 数分で記入されます',
+        time:fDT(new Date()),tag:'調査中',cls:'g',nw:0,id:'ess-local-'+Date.now(),
+        d:{sub:'AI が調査中',
+           kv:[['状態','値段・消耗頻度・購入場所・類似製品を調べています']],
+           body:'調査が終わると自動でこの項目に記入されます。'}};
+      PENDING_ESS.push(essPending);persistEss();
+      D.unshift(essPending);
+      go('essentials');
+    }
     mask.classList.remove('show');
     if(opts.editId){
       // 編集は既存を差し替える。id は保ったまま。
@@ -1325,6 +1381,12 @@ function openForm(k,prefill,opts){
       setSync('送信しました',true);
     }).catch(function(e){
       if(local){local.failed=1;render();}
+      if(essPending){
+        // 送信できなかった調査中項目は取り下げる（残すと永久に「調査中」のまま）
+        PENDING_ESS=PENDING_ESS.filter(function(p){return p!==essPending});
+        for(var j=D.length-1;j>=0;j--)if(D[j]===essPending)D.splice(j,1);
+        persistEss();render();
+      }
       setSync('送信失敗',false);
       notify('登録の送信に失敗しました（'+e.message+'）。通信を確認して再登録してください。',true);
     });
@@ -1643,6 +1705,7 @@ function loadAll(){
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=mergeRemoteState(res[1]);persistLocal();
+    reconcileEssentials();
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     applyUserState();
