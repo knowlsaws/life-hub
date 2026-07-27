@@ -319,7 +319,7 @@ function setBrand(){
   else if(view==='tag')brand.innerHTML='<span class="sect">タグ: '+esc(curTag)+'</span>';
   else brand.innerHTML='<span class="sect">'+esc(sn(view))+'</span>';
   q.placeholder = view==='home' ? '全ツールを横断して検索' :
-    (view==='tag'?'このタグ内を検索':(view==='nearby'?'検索結果を絞り込み':sn(view)+'の中を検索'));
+    (view==='tag'?'このタグ内を検索':(view==='nearby'?'例: コンビニ / ファミマ / トイレ':sn(view)+'の中を検索'));
 }
 
 function badges(x){
@@ -363,60 +363,6 @@ function render(){
   bind();
 }
 
-/* トップの「トピック」: 全セクション＋予定から3件を日替わりでランダムに選ぶ。
- * 乱数は日付でシードし、3秒ごとの同期再描画で中身が入れ替わらないようにする。
- * セクションが偏らないよう、まずセクションを混ぜて1件ずつ拾う。 */
-/* 1件のデータを話し言葉の1行文にする。列は分けず「・〜だよ」の形で出す。 */
-function topicSentence(x){
-  var WORK={anime:'アニメ',tv:'ドラマ',movies:'映画'};
-  if(WORK[x.s]){
-    if(x.st==='upcoming')return x.t+'（'+WORK[x.s]+'）がもうすぐ始まるよ';
-    if(x.nw)return x.t+'の新しい話が来てるよ';
-    if(x.st==='watching')return x.t+'の続き、見ようよ';
-    return x.t+'（'+WORK[x.s]+'）が配信中だよ';
-  }
-  if(x.s==='mail')return x.unread?'「'+x.t+'」ってメールが未読だよ':'「'+x.t+'」ってメールが来てたよ';
-  if(x.s==='news')return '「'+x.t+'」っていうニュースがあるよ';
-  if(x.s==='search')return x.t+'の解説ページができてるよ';
-  if(x.s==='essentials')return x.t+'、必需品リストに入ってるよ';
-  if(x.s==='meal'){
-    var p=String(x.t).split(' · ');
-    return p.length>1?'この前の'+p[0]+'は'+p.slice(1).join(' · ')+'だったね':x.t+'を記録してるよ';
-  }
-  return x.t;
-}
-function evSentence(e,td0){
-  if(e.type==='task')
-    return e.d===td0?'今日が'+e.n+'の締切だよ':e.d.slice(5)+'までに'+e.n+'だよ';
-  var t=(e.time&&e.time!=='—')?e.time+'から':'';
-  return e.d===td0?'今日'+(t||'は')+e.n+'だよ':e.d.slice(5)+'に'+e.n+'があるよ';
-}
-function pickTopics(){
-  var seed=0,ds=fD(TODAY);
-  for(var i=0;i<ds.length;i++)seed=((seed*31+ds.charCodeAt(i))>>>0);
-  function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
-  var td0=ds;
-  var bySec={};
-  D.forEach(function(x){
-    if(x.gone||x.id==='meal-weight')return;
-    (bySec[x.s]=bySec[x.s]||[]).push(topicSentence(x));
-  });
-  var up=EV.filter(function(e){return e.d>=td0&&!e.done});
-  if(up.length)bySec.schedule=up.map(function(e){return evSentence(e,td0)});
-  // 天気が取れていれば候補に足す（位置情報の許可がある端末のみ）
-  var f=FORECAST[td0];
-  if(f){
-    bySec.weather=[f.max>=35?'今日は最高'+Math.round(f.max)+'°の猛暑だから気をつけてね'
-      :f.max>=30?'今日は最高'+Math.round(f.max)+'°まで上がるよ、水分とってね'
-      :f.pop>=50?'今日は雨の確率'+f.pop+'%だから傘持ってね'
-      :'今日の天気は'+f.icon+'で最高'+Math.round(f.max)+'°だよ'];
-  }
-  var keys=Object.keys(bySec);
-  for(var i=keys.length-1;i>0;i--){var j=Math.floor(rnd()*(i+1));var t=keys[i];keys[i]=keys[j];keys[j]=t}
-  return keys.slice(0,3).map(function(k){
-    var arr=bySec[k];return arr[Math.floor(rnd()*arr.length)];
-  });
-}
 function renderHome(){
   if(query){
     var h='',any=false;
@@ -432,13 +378,6 @@ function renderHome(){
   }
   var ur=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var h='<div class="greet"><div class="d">'+dayLabel(TODAY)+'</div></div>';
-  // 日替わりでランダムに選んだ3件を「・〜だよ」の1行文で出す（リンクなし）
-  var picks=pickTopics();
-  if(picks.length)
-    h+='<div class="card" style="margin-bottom:12px"><h4>トピック</h4>'+
-      picks.map(function(s){
-        return '<div style="font-size:13px;line-height:1.8">・'+esc(s)+'</div>';
-      }).join('')+'</div>';
   // 今日の予定・タスクを実データから拾う（DAY → TASK → 時間順）
   var td=fD(TODAY);
   var todays=EV.filter(function(e){return e.d===td}).sort(function(a,b){
@@ -756,10 +695,23 @@ function renderNearby(){
   var S=Nearby.state,cat=null;
   Nearby.CATS.forEach(function(c){if(c.k===S.cat)cat=c});
   if(S.phase==='idle')Nearby.warm(nbUpd);   // 1タップ目を速くするため位置だけ先に温める
+  /* 検索語からカテゴリー/ブランドを推定する（「コンビニ」→カテゴリー起動、
+   * 「ファミマ」→コンビニ検索＋ファミリーマート絞り込み）。 */
+  var qi=query?Nearby.queryIntent(queryRaw):null;
+  // 未検索の状態で語を打ったら、推定したカテゴリーをそのまま検索する
+  if(qi&&S.phase==='idle')setTimeout(function(){
+    if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd);
+  },0);
   var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
     return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
   }).join('')+'</div>';
   var h='';
+  // 表示中と違うカテゴリーの語なら、そのカテゴリーへの検索ボタンを出す
+  if(qi&&qi.cat!==S.cat){
+    var qc=null;Nearby.CATS.forEach(function(c){if(c.k===qi.cat)qc=c});
+    if(qc)h+='<button class="act" data-nbcat="'+qc.k+'" style="width:100%;margin-bottom:10px;justify-content:flex-start">'+
+      qc.e+' 近くの'+esc(qc.n)+'を検索'+(qi.filters?'（'+esc(qi.term)+'）':'')+'</button>';
+  }
   if(S.loc){
     var d=new Date(S.locAt);
     h+='<div class="nbloc">現在地 取得済み（精度 ±'+Math.round(S.loc.acc)+'m · '+
@@ -784,7 +736,11 @@ function renderNearby(){
       '<button class="btn sec" data-nbact="retry">再試行</button>';
   }else if(S.phase==='ok'){
     NB_LIST=S.items.filter(function(it){
-      return !query||((it.title+' '+it.line2).toLowerCase().indexOf(query)>-1);
+      if(!query)return true;
+      if(qi&&qi.cat===S.cat)
+        // カテゴリー語（コンビニ等）は絞らず全件、ブランド語（ファミマ等）は別名で絞る
+        return qi.filters?Nearby.itemMatches(it,qi.filters):true;
+      return Nearby.itemMatches(it,[queryRaw]);   // 表記ゆれに強い通常の絞り込み
     });
     h+='<div class="sechead"><span class="n">'+esc(cat?cat.n:'')+' · 近い順</span>'+
       '<span class="c">'+NB_LIST.length+' 件 · 半径 '+Nearby.fmtDist(S.radius)+
