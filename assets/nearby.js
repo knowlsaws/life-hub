@@ -392,6 +392,99 @@ window.Nearby = (function () {
     else { state.phase = 'idle'; if (onUpdate) onUpdate(); }
   }
 
+  // ---- 検索語の理解 --------------------------------------------------------
+  /* 検索欄の語を正規化する: NFKC（全半角）→ ひらがな→カタカナ → 記号除去。
+   * 「せぶん」「ｾﾌﾞﾝ」「セブン-イレブン」がすべて「セブンイレブン」系に揃い、
+   * 店名の表記ゆれに強くなる。 */
+  function normQ(s) {
+    s = String(s || '').toLowerCase();
+    try { s = s.normalize('NFKC'); } catch (e) {}
+    s = s.replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); });
+    return s.replace(/[^0-9a-zァ-ヺー一-鿿]/g, '');
+  }
+
+  /* 検索語 → カテゴリー/ブランドの対応表。
+   * t: カテゴリーを指す語（一致したらそのカテゴリー検索へ誘導。絞り込みはしない）
+   * f: ブランド語（カテゴリー検索へ誘導した上で、この別名で結果を絞り込む） */
+  var QUERY_MAP = [
+    { cat: 'conv', t: ['コンビニ', 'コンビニエンスストア'] },
+    { cat: 'conv', t: ['セブン', 'セブンイレブン', '7イレブン', '711'], f: ['セブン', '7eleven', 'seveneleven'] },
+    { cat: 'conv', t: ['ファミマ', 'ファミリーマート'], f: ['ファミリーマート', 'familymart'] },
+    { cat: 'conv', t: ['ローソン'], f: ['ローソン', 'lawson'] },
+    { cat: 'conv', t: ['ミニストップ'], f: ['ミニストップ', 'ministop'] },
+    { cat: 'conv', t: ['セイコーマート', 'セコマ'], f: ['セイコーマート', 'seicomart'] },
+    { cat: 'conv', t: ['デイリーヤマザキ'], f: ['デイリーヤマザキ', 'ヤマザキ'] },
+    { cat: 'rest', t: ['レストラン', 'ごはん', 'ご飯', '食事', 'ランチ', 'ディナー', '定食', '食堂', 'ファミレス', 'ファストフード'] },
+    { cat: 'rest', t: ['マック', 'マクドナルド'], f: ['マクドナルド', 'mcdonald'] },
+    { cat: 'rest', t: ['ケンタ', 'ケンタッキー'], f: ['ケンタッキー', 'kfc'] },
+    { cat: 'rest', t: ['モスバーガー', 'モス'], f: ['モスバーガー', 'mos'] },
+    { cat: 'rest', t: ['すきや', 'すき家'], f: ['すき家'] },
+    { cat: 'rest', t: ['よしのや', '吉野家'], f: ['吉野家'] },
+    { cat: 'rest', t: ['まつや', '松屋'], f: ['松屋'] },
+    { cat: 'rest', t: ['サイゼ', 'サイゼリヤ'], f: ['サイゼリヤ', 'saizeriya'] },
+    { cat: 'rest', t: ['ガスト'], f: ['ガスト', 'gusto'] },
+    { cat: 'rest', t: ['ラーメン', 'うどん', 'そば', '寿司', 'すし', '焼肉', 'カレー', '中華', 'イタリアン', '居酒屋'] },
+    { cat: 'cafe', t: ['カフェ', '喫茶', '喫茶店', 'コーヒー', 'アイス'] },
+    { cat: 'cafe', t: ['スタバ', 'スターバックス'], f: ['スターバックス', 'starbucks'] },
+    { cat: 'cafe', t: ['ドトール'], f: ['ドトール', 'doutor'] },
+    { cat: 'cafe', t: ['コメダ'], f: ['コメダ', 'komeda'] },
+    { cat: 'cafe', t: ['タリーズ'], f: ['タリーズ', 'tully'] },
+    { cat: 'fuel', t: ['ガソリン', 'ガソリンスタンド', '給油', 'スタンド'] },
+    { cat: 'fuel', t: ['エネオス'], f: ['エネオス', 'eneos'] },
+    { cat: 'fuel', t: ['出光', 'アポロステーション'], f: ['出光', 'apollo', 'idemitsu'] },
+    { cat: 'fuel', t: ['コスモ石油', 'コスモ'], f: ['コスモ', 'cosmo'] },
+    { cat: 'wc',   t: ['トイレ', 'お手洗い', '化粧室', 'wc'] },
+    { cat: 'eki',  t: ['道の駅', 'サービスエリア', 'パーキングエリア', 'sa', 'pa'] },
+    { cat: 'super', t: ['スーパー', 'スーパーマーケット'] },
+    { cat: 'super', t: ['イオン'], f: ['イオン', 'aeon', 'マックスバリュ'] },
+    { cat: 'super', t: ['西友', 'せいゆう'], f: ['西友', 'seiyu'] },
+    { cat: 'super', t: ['イトーヨーカドー', 'ヨーカドー'], f: ['ヨーカドー', 'itoyokado'] },
+    { cat: 'super', t: ['業務スーパー', '業スー'], f: ['業務スーパー'] },
+    { cat: 'drug', t: ['ドラッグストア', '薬局', '薬', 'くすり'] },
+    { cat: 'drug', t: ['マツキヨ', 'マツモトキヨシ'], f: ['マツモトキヨシ', 'matsukiyo'] },
+    { cat: 'drug', t: ['ウエルシア'], f: ['ウエルシア', 'welcia'] },
+    { cat: 'drug', t: ['ツルハ'], f: ['ツルハ', 'tsuruha'] },
+    { cat: 'drug', t: ['スギ薬局'], f: ['スギ薬局', 'スギドラッグ'] },
+    { cat: 'drug', t: ['サンドラッグ'], f: ['サンドラッグ'] },
+    { cat: 'park', t: ['駐車場', 'パーキング', 'コインパーキング'] },
+    { cat: 'park', t: ['タイムズ'], f: ['タイムズ', 'times'] },
+    { cat: 'atm',  t: ['atm', '銀行', 'ゆうちょ'] },
+    { cat: 'hosp', t: ['病院', 'クリニック', '診療所', '医院', '内科', '外科', '小児科', '耳鼻科', '皮膚科', '眼科', '歯医者', '歯科'] },
+    { cat: 'bath', t: ['温泉', '銭湯', 'スーパー銭湯', 'ふろ', '風呂', 'スパ', 'サウナ'] }
+  ];
+
+  /* 検索語からカテゴリー/ブランドの意図を推定する。
+   * 完全一致 > 語を含む検索文 > 語の先頭部分 の順で強くマッチさせ、
+   * 同点はより長い語を優先（「スーパー銭湯」が super でなく bath に勝つ）。 */
+  function queryIntent(raw) {
+    var q = normQ(raw);
+    if (q.length < 2) return null;
+    var best = null, bestScore = 0;
+    QUERY_MAP.forEach(function (m) {
+      m.t.forEach(function (term) {
+        var t = normQ(term), score = 0;
+        if (!t) return;
+        if (q === t) score = 3000 + t.length;
+        else if (q.indexOf(t) > -1 && t.length >= 2) score = 2000 + t.length;
+        else if (t.indexOf(q) === 0) score = 1000 + q.length;
+        if (score > bestScore) { bestScore = score; best = { cat: m.cat, filters: m.f || null, term: term }; }
+      });
+    });
+    return best;
+  }
+
+  /* 1件が検索語（正規化済みの候補リスト）に一致するか。名前・ブランド・種別・
+   * ジャンル・住所まで見る。 */
+  function itemMatches(it, terms) {
+    var hay = normQ([it.title, it.name, it.brand, it.sub, it.line2,
+                     addr(it.tags)].filter(Boolean).join(' '));
+    for (var i = 0; i < terms.length; i++) {
+      var t = normQ(terms[i]);
+      if (t && hay.indexOf(t) > -1) return true;
+    }
+    return false;
+  }
+
   // ---- Google クチコミ（任意・APIキー設定時のみ） ---------------------------
   /* Places API (New) の Text Search 1回で、OSM の名前＋座標から Google 側の
    * 場所を引き当て、評価・クチコミ・営業状況を取る。キーはこの端末の
@@ -480,6 +573,7 @@ window.Nearby = (function () {
     select: select, relocate: relocate, retry: retry, warm: warm,
     fmtDist: fmtDist, gmaps: gmaps, gmapsDir: gmapsDir,
     addr: addr, hoursJa: hoursJa, cuisineJa: cuisineJa,
+    queryIntent: queryIntent, itemMatches: itemMatches,
     hasGoogleKey: hasGoogleKey, setGoogleKey: setGoogleKey, googlePlace: googlePlace
   };
 })();
