@@ -8,6 +8,7 @@ var ICON={
  meal:'<path d="M4 3v8a3 3 0 0 0 6 0V3M7 3v18M17 3c-1.5 0-2 3-2 6s.5 5 2 5 2-2 2-5-.5-6-2-6zM17 14v7"/>',
  essentials:'<path d="M6 8h12l1 12H5L6 8z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/>',
  supra:'<path d="M3 15v-2.5L5.5 8H15l4 4.5h2V15"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4M3 15h2.7M18.3 15H21"/>',
+ money:'<circle cx="12" cy="12" r="9"/><path d="M8.5 7.5 12 12l3.5-4.5M12 12v5M9.5 13.5h5M9.5 15.8h5"/>',
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
@@ -33,7 +34,7 @@ function fD(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate(
 function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
-  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -84,6 +85,54 @@ var D=[], EV=[], DEMO_MODE=true;
 /* 挨拶文は life-content の .web/greeting.json から配信する。
  * 毎朝パイプラインが最新情報を1つ添えて書き換える想定。 */
 var GREETING={text:''};
+/* 収支記録表。ユーザー入力のデータなので state.json と同じく
+ * .web/money.json をサイトが直接読み書きする（パイプライン不要・即時反映）。
+ * entries: {id,type:'income'|'expense'|'saving',name,amount,day(毎月の日付)}
+ * balance: {amount,asOf} 現在の貯金残高 */
+var MONEY={entries:[],balance:null},moneyTimer=null;
+var MONEY_TYPE={'給料・収入':'income','支払い':'expense','貯金':'saving'};
+var MONEY_JA={income:'収入',expense:'支払い',saving:'貯金'};
+function fmtYen(n){return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString()+'円'}
+/* 毎月 day 日の次の到来日。月末超え（31日→2月等）は月末に丸める */
+function nextPayDate(day){
+  function mk(y,m){var last=new Date(y,m+1,0).getDate();return new Date(y,m,Math.min(day,last))}
+  var d=mk(TODAY.getFullYear(),TODAY.getMonth());
+  if(d<new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()))
+    d=mk(TODAY.getFullYear(),TODAY.getMonth()+1);
+  return d;
+}
+function moneyMonthly(){
+  var t={income:0,expense:0,saving:0};
+  MONEY.entries.forEach(function(e){t[e.type]=(t[e.type]||0)+(+e.amount||0)});
+  t.left=t.income-t.expense-t.saving;
+  return t;
+}
+/* entries を一覧・検索・詳細で使えるよう D の項目に落とす */
+function buildMoneyItems(){
+  D=D.filter(function(x){return x.s!=='money'});
+  MONEY.entries.forEach(function(e){
+    var d=nextPayDate(e.day),ds=fD(d);
+    var ja=MONEY_JA[e.type]||e.type;
+    D.push({s:'money',t:e.name,
+      m:'毎月'+e.day+'日 · '+fmtYen(e.amount)+' · '+ja,
+      time:ds+' 00:00',due:ds,id:'money-'+e.id,
+      tag:ja,cls:e.type==='income'?'g':(e.type==='saving'?'g':''),
+      tags:['money','収支',ja,e.name],
+      d:{sub:'収支記録 · 毎月'+e.day+'日',
+         kv:[['種別',ja],['金額',fmtYen(e.amount)],['毎月の日付',e.day+'日'],['次回',ds]]}});
+  });
+}
+function saveMoney(){
+  try{localStorage.setItem('lifehub.money',JSON.stringify(MONEY))}catch(e){}
+  if(!GH.hasToken())return;
+  clearTimeout(moneyTimer);
+  moneyTimer=setTimeout(function(){
+    GH.putFile('.web/money.json',JSON.stringify(MONEY,null,1)+'\n','money: 収支を保存 [skip ci]')
+      .then(function(){setSync('保存しました',true)})
+      .catch(function(){setSync('保存失敗',false);
+        notify('収支の保存に失敗しました。通信を確認してもう一度操作してください。',true)});
+  },800);
+}
 var MANIFEST={sections:{}};
 /* 用語辞書（.web/terms.json）。全メニューの本文で既知の語をリンクにし、
  * タップで解説を出す。検索の一覧には出さない。 */
@@ -357,6 +406,7 @@ function render(){
   else if(view==='search')r=renderSearch();
   else if(view==='essentials')r=renderEssentials();
   else if(view==='supra')r=renderSupra();
+  else if(view==='money')r=renderMoney();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
   scroll.innerHTML=(r.body||'')+'<div class="footn">GitHub のみで完結 · manifest 監視 3秒</div>';
@@ -428,6 +478,12 @@ function renderHome(){
         if(e&&String(x.time).slice(0,10)===td)kc+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;
       });
       return [kc?('今日 '+kc.toLocaleString()+' kcal'):'今日の記録なし', upd||'—'];
+    }
+    if(k==='money'){
+      var mt=moneyMonthly();
+      var nx2=xs.slice().sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
+      return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+nx2.t:'')):'未登録',
+              MONEY.balance?('貯金 '+fmtYen(MONEY.balance.amount)):'—'];
     }
     if(k==='supra'){
       var pr=xs.filter(function(x){return x.id==='supra-price'})[0];
@@ -746,6 +802,65 @@ function renderSupra(){
   return {act:'',body:h};
 }
 
+/* 収支記録表。今月のサマリー → 貯金の12ヶ月予測 → 支払日/給料日の一覧。 */
+function renderMoney(){
+  var act='<div class="actbar"><button class="act" data-form="money">'+ic('plus')+'収支を登録</button>'+
+    '<button class="act" data-form="moneybal">'+ic('plus')+'貯金残高を設定</button></div>';
+  var h='';
+  var t=moneyMonthly();
+  if(!MONEY.entries.length&&!MONEY.balance){
+    h+='<div class="empty">まだ登録がありません。毎月の給料・支払い・貯金と現在の貯金残高を'+
+      '登録すると、今後の貯金の見通しと支払日をここで確認できます。</div>';
+    return {act:act,body:h};
+  }
+  // 今月のサマリー
+  h+='<div class="card"><h4>毎月のサマリー</h4>'+
+    '<div class="kv"><span class="k">収入</span><span class="v">'+fmtYen(t.income)+'</span></div>'+
+    '<div class="kv"><span class="k">支払い</span><span class="v">'+fmtYen(t.expense)+'</span></div>'+
+    '<div class="kv"><span class="k">貯金</span><span class="v">'+fmtYen(t.saving)+'</span></div>'+
+    '<div class="kv"><span class="k">自由に使える残り</span><span class="v" style="color:'+
+      (t.left<0?'var(--ember)':'var(--gold)')+'">'+fmtYen(t.left)+'</span></div>'+
+    (t.left<0?'<p class="prose" style="color:var(--ember);font-size:12px;margin-top:6px">'+
+      '毎月の支出が収入を上回っています。</p>':'')+'</div>';
+  // 貯金の見通し（現在残高 + 毎月の貯金額 × 12ヶ月）
+  if(MONEY.balance){
+    var bal=+MONEY.balance.amount||0,series=[];
+    for(var i=0;i<=12;i++){
+      var md=new Date(TODAY.getFullYear(),TODAY.getMonth()+i,1);
+      series.push([md.getFullYear()+'/'+pad(md.getMonth()+1),
+        Math.round((bal+t.saving*i)/10000)]);
+    }
+    h+='<div class="card"><h4>貯金の見通し</h4>'+
+      '<div class="kv"><span class="k">現在の貯金（'+esc(MONEY.balance.asOf||'')+'時点）</span>'+
+      '<span class="v">'+fmtYen(bal)+'</span></div>'+
+      (t.saving>0?spark(series,'万円')+
+        '<div class="kv" style="border-top:0"><span class="k">1年後の見込み</span><span class="v">'+
+        fmtYen(bal+t.saving*12)+'</span></div>'
+       :'<p class="prose" style="color:var(--dim);font-size:12px">毎月の貯金を登録すると'+
+        '見通しグラフが表示されます。</p>')+'</div>';
+  }else{
+    h+='<div class="card"><h4>貯金の見通し</h4><p class="prose" style="color:var(--dim);font-size:12px">'+
+      '「貯金残高を設定」で現在の貯金額を登録すると、毎月の貯金額から1年先までの見通しを表示します。</p></div>';
+  }
+  // 支払日・給料日（次回日付順。あとN日はこの端末の今日から計算）
+  var rows=D.filter(function(x){return x.s==='money'&&match(x)})
+    .sort(function(a,b){return String(a.due)<String(b.due)?-1:1});
+  h+='<div class="sechead"><span class="n">支払日・給料日</span><span class="c">'+rows.length+' 件</span></div>';
+  if(rows.length){
+    var td0=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
+    h+='<div class="list">'+rows.map(function(x){
+      var days=Math.round((new Date(x.due.replace(/\//g,'-'))-td0)/864e5);
+      var badge=days===0?'<span class="tag e">今日</span>'
+        :days<=7?'<span class="tag g">あと'+days+'日</span>'
+        :'<span class="tag">あと'+days+'日</span>';
+      return '<button class="row" data-i="'+D.indexOf(x)+'">'+
+        '<span class="l"><span class="t">'+esc(x.t)+'</span><span class="m">'+esc(x.m)+'</span></span>'+
+        '<span class="r">'+badge+'<span class="time">'+esc(x.due.slice(5))+'</span></span></button>';
+    }).join('')+'</div>';
+  }else h+='<div class="empty">「収支を登録」から給料・支払い・貯金を登録してください</div>';
+  return {act:act,body:h};
+}
+
 /* ---- 近くのスポット ------------------------------------------------------
  * 現在地 + Overpass API（assets/nearby.js）。カテゴリーをワンタップで
  * 近い順に表示し、行タップで詳細、ピン/ボタンで Google マップに飛ぶ。
@@ -1001,6 +1116,17 @@ function showDetail(i){
       });
     };
   }
+  if(x.s==='money'){
+    dTrash.style.display='grid';
+    dTrash.onclick=function(){
+      confirmDelete(x.t,function(){
+        var eid=String(x.id||'').replace(/^money-/,'');
+        MONEY.entries=MONEY.entries.filter(function(e){return String(e.id)!==eid});
+        saveMoney();buildMoneyItems();
+        histBack();
+      });
+    };
+  }
   var h='';
   if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px">'+
     '<span class="po" style="width:74px;height:106px;font-size:26px">'+
@@ -1185,7 +1311,12 @@ var FORMS={
  research:{h:'調べてほしい内容を登録',s:'初心者向けに画像付きで解説し、用語ページも自動生成します',
    f:[['調べたい内容','text','量子コンピュータ']]},
  essential:{h:'必需品を登録',s:'製品名だけで OK。値段・消耗頻度・購入場所・類似製品は AI が調べて記入します',
-   f:[['製品名','text','例: ジレット フュージョン 替刃 8個入']]}
+   f:[['製品名','text','例: ジレット フュージョン 替刃 8個入']]},
+ money:{h:'収支を登録',s:'毎月の給料・支払い・貯金を登録すると、貯金の見通しと支払日を確認できます',
+   f:[['種別','select','給料・収入|支払い|貯金'],['名前','text','家賃'],['金額（円）','text','85000'],
+      ['毎月の日付','select','1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|月末']]},
+ moneybal:{h:'貯金残高を設定',s:'現在の貯金額。見通しグラフの起点になります',
+   f:[['現在の貯金額（円）','text','1250000']]}
 };
 var placeTimer=null;
 function confirmDelete(name,onYes){
@@ -1363,6 +1494,24 @@ function openForm(k,prefill,opts){
       if(k==='essential'&&!String(payload['製品名']||'').trim())
         return flash('製品名を入力してください');
     }
+    if(k==='money'||k==='moneybal'){
+      // 収支は inbox を経由せず、サイトが money.json を直接保存する（即時反映）
+      if(k==='money'){
+        var mAmt=parseInt(String(payload['金額（円）']||'').replace(/[^0-9]/g,''),10);
+        var mName=String(payload['名前']||'').trim();
+        if(!mName||!mAmt)return flash('名前と金額を入力してください');
+        var mDay=payload['毎月の日付']==='月末'?31:(parseInt(payload['毎月の日付'],10)||1);
+        MONEY.entries.push({id:'m'+Date.now(),type:MONEY_TYPE[payload['種別']]||'expense',
+          name:mName,amount:mAmt,day:mDay});
+      }else{
+        var mBal=parseInt(String(payload['現在の貯金額（円）']||'').replace(/[^0-9]/g,''),10);
+        if(isNaN(mBal))return flash('金額を入力してください');
+        MONEY.balance={amount:mBal,asOf:fD(TODAY)};
+      }
+      saveMoney();buildMoneyItems();
+      mask.classList.remove('show');go('money');
+      return;
+    }
     if(!GH.hasToken()){
       btn.textContent='デモモードです — 右上から接続設定を行ってください';
       setTimeout(function(){mask.classList.remove('show');btn.textContent='登録して GitHub に送信'},1800);
@@ -1515,7 +1664,7 @@ function toggleDone(id){
 
 function openAddMenu(){
   var opts=[['event','予定を登録'],['task','タスクを登録'],['recurring','定期予定を登録'],['meal','食事を記録'],
-            ['photo','写真で登録'],['essential','必需品を登録'],['research','調べてほしい内容を登録']];
+            ['photo','写真で登録'],['essential','必需品を登録'],['money','収支を登録'],['research','調べてほしい内容を登録']];
   sheet.innerHTML='<h3>登録</h3><div class="sh">どこからでも登録できます</div>'+
     opts.map(function(o){return '<button class="act" style="width:100%;margin-top:8px;justify-content:flex-start" data-open="'+o[0]+'">'+ic('plus')+esc(o[1])+'</button>'}).join('')+
     '<button class="btn sec" id="fCancel">キャンセル</button>';
@@ -1698,6 +1847,8 @@ function setSync(txt,ok){
 }
 function useDemo(){
   D=DEMO.items.slice();EV=DEMO.events.slice();DEMO_MODE=true;
+  MONEY=JSON.parse(JSON.stringify(DEMO.money||{entries:[],balance:null}));
+  buildMoneyItems();
   TERMS=DEMO.terms||{};buildTermRe();
   if(DEMO.holidays)HOL=DEMO.holidays;
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
@@ -1720,7 +1871,8 @@ function loadAll(){
       GH.getJSON('.web/greeting.json').catch(function(){return null}),
       GH.getJSON('.web/state.json').catch(function(){return null}),
       GH.getJSON('.web/terms.json').catch(function(){return null}),
-      GH.getJSON('.web/holidays.json').catch(function(){return null})
+      GH.getJSON('.web/holidays.json').catch(function(){return null}),
+      GH.getJSON('.web/money.json').catch(function(){return null})
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
@@ -1728,6 +1880,10 @@ function loadAll(){
     reconcileEssentials();
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
+    // money.json が取れない間は端末のバックアップで動く（保存失敗の救済）
+    if(res[4]&&res[4].entries)MONEY=res[4];
+    else{try{MONEY=JSON.parse(localStorage.getItem('lifehub.money')||'null')||MONEY}catch(e){}}
+    buildMoneyItems();
     applyUserState();
     render();updateNotice();
   });
