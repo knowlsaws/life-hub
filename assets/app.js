@@ -506,14 +506,14 @@ function renderHome(){
       var mtd=fD(TODAY);   // 済んだ単発は「次」に出さない
       var nx2=xs.filter(function(x){return String(x.due)>=mtd})
         .sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
-      return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+nx2.t:'')):'未登録',
+      return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+esc(nx2.t):'')):'未登録',
               MONEY.balance?('貯金 '+fmtYen(MONEY.balance.amount)):'—'];
     }
     if(k==='supra'){
       var pr=xs.filter(function(x){return x.id==='supra-price'})[0];
       var nx=xs.filter(function(x){return String(x.id||'').indexOf('supra-mnt-')===0})
         .sort(function(a,b){return String(a.due||'')<String(b.due||'')?-1:1})[0];
-      var lbl=[pr?pr.t:'',nx?'次 '+nx.t:''].filter(Boolean).join(' · ');
+      var lbl=[pr?esc(pr.t):'',nx?'次 '+esc(nx.t):''].filter(Boolean).join(' · ');
       return [lbl||xs.length+' 件', upd||'—'];
     }
     if(k==='anime'||k==='tv'||k==='movies'){
