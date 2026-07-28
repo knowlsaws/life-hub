@@ -99,25 +99,31 @@ function fmtYenTy(ty,n){
   var sign=ty==='income'?'+':ty==='expense'?'−':'';
   return '<b style="color:'+col+';font-weight:600">'+sign+fmtYen(n)+'</b>';
 }
-/* 毎月 day 日の次の到来日。月末超え（31日→2月等）は月末に丸める */
-function nextPayDate(day){
+/* 毎月 day 日の次の到来日。月末超え（31日→2月等）は月末に丸める。
+ * from（'YYYY/MM'・任意）が先の月なら、その月の初回を返す */
+function nextPayDate(day,from){
   function mk(y,m){var last=new Date(y,m+1,0).getDate();return new Date(y,m,Math.min(day,last))}
   var d=mk(TODAY.getFullYear(),TODAY.getMonth());
   if(d<new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()))
     d=mk(TODAY.getFullYear(),TODAY.getMonth()+1);
+  if(from&&/^\d{4}\/\d{2}$/.test(from)){
+    var fd=mk(+from.slice(0,4),+from.slice(5,7)-1);
+    if(fd>d)d=fd;
+  }
   return d;
 }
+/* 定期エントリが ym（'YYYY/MM'）の月に有効か。from/to は任意の期間設定 */
+function moneyActive(e,ym){return !(e.from&&ym<e.from)&&!(e.to&&ym>e.to)}
 function moneyMonthly(){
-  // 毎月の定期に加え、単発（rep:'once'）は日付が今月のものだけ算入する
-  var t={income:0,expense:0,saving:0,recSaving:0};
+  // 期間内の毎月の定期に加え、単発（rep:'once'）は日付が今月のものだけ算入する
+  var t={income:0,expense:0,saving:0};
   var ym=TODAY.getFullYear()+'/'+pad(TODAY.getMonth()+1);
   MONEY.entries.forEach(function(e){
     var amt=+e.amount||0;
     if(e.rep==='once'){
       if(String(e.date||'').slice(0,7)===ym)t[e.type]+=amt;
-    }else{
+    }else if(moneyActive(e,ym)){
       t[e.type]+=amt;
-      if(e.type==='saving')t.recSaving+=amt;
     }
   });
   t.left=t.income-t.expense-t.saving;
@@ -127,21 +133,36 @@ function moneyMonthly(){
 function buildMoneyItems(){
   D=D.filter(function(x){return x.s!=='money'});
   MONEY.entries.forEach(function(e){
-    var once=e.rep==='once';
-    var ds=once?String(e.date||''):fD(nextPayDate(e.day));
+    var once=e.rep==='once',ended=0,ds;
+    if(once)ds=String(e.date||'');
+    else{
+      var nd=nextPayDate(e.day,e.from);
+      var nym=nd.getFullYear()+'/'+pad(nd.getMonth()+1);
+      if(e.to&&nym>e.to){
+        // 期間が終わった定期は、終了月の最後の支払日を出して「終了」扱いにする
+        ended=1;
+        var ty=+e.to.slice(0,4),tm=+e.to.slice(5,7)-1;
+        var tl=new Date(ty,tm+1,0).getDate();
+        nd=new Date(ty,tm,Math.min(e.day,tl));
+      }
+      ds=fD(nd);
+    }
     if(!ds)return;
     var ja=MONEY_JA[e.type]||e.type;
     var when=once?'単発 · '+ds.slice(5):'毎月'+e.day+'日';
+    var per=e.from&&e.to?e.from+' 〜 '+e.to:(e.from?e.from+' から':(e.to?e.to+' まで':''));
     D.push({s:'money',t:e.name,
       m:when+' · '+fmtYen(e.amount)+' · '+ja,
-      time:ds+' 00:00',due:ds,once:once?1:0,id:'money-'+e.id,
+      time:ds+' 00:00',due:ds,once:once?1:0,ended:ended,id:'money-'+e.id,
       ty:e.type,amt:+e.amount||0,when:when,
-      tag:once?ja+'（単発）':ja,
+      tag:ended?ja+'（終了）':(once?ja+'（単発）':ja),
       cls:e.type==='income'?'ok':(e.type==='expense'?'e':'g'),
       tags:['money','収支',ja,e.name],
       d:{sub:once?'収支記録 · 単発':'収支記録 · 毎月'+e.day+'日',
-         kv:[['種別',ja+(once?'（単発）':'')],['金額',fmtYen(e.amount)],
-             once?['日付',ds]:['毎月の日付',e.day+'日'],[once?'区分':'次回',once?'1回だけ':ds]]}});
+         kv:[['種別',ja+(once?'（単発）':(ended?'（終了）':''))],['金額',fmtYen(e.amount)],
+             once?['日付',ds]:['毎月の日付',e.day+'日']]
+           .concat(per?[['期間',per]]:[])
+           .concat([once?['区分','1回だけ']:[ended?'最終':'次回',ds]])}});
   });
 }
 function saveMoney(){
@@ -860,7 +881,14 @@ function renderMoney(){
     for(var i=0;i<=12;i++){
       var md=new Date(TODAY.getFullYear(),TODAY.getMonth()+i,1);
       var ym=md.getFullYear()+'/'+pad(md.getMonth()+1);
-      if(i>0)acc+=t.recSaving+(onceSav[ym]||0);
+      if(i>0){
+        // 定期の貯金は、その月に期間内のものだけ積む（開始前・終了後は積まない）
+        var rs=0;
+        MONEY.entries.forEach(function(e){
+          if(e.rep!=='once'&&e.type==='saving'&&moneyActive(e,ym))rs+=+e.amount||0;
+        });
+        acc+=rs+(onceSav[ym]||0);
+      }
       series.push([ym,Math.round(acc/10000)]);
     }
     h+='<div class="card"><h4>貯金の見通し</h4>'+
@@ -886,7 +914,7 @@ function renderMoney(){
   if(rows.length){
     h+='<div class="list">'+rows.map(function(x){
       var days=Math.round((new Date(x.due.replace(/\//g,'-'))-td0)/864e5);
-      var badge=days<0?'<span class="tag">済</span>'
+      var badge=days<0?'<span class="tag">'+(x.ended?'終了':'済')+'</span>'
         :days===0?'<span class="tag e">今日</span>'
         :days<=7?'<span class="tag g">あと'+days+'日</span>'
         :'<span class="tag">あと'+days+'日</span>';
@@ -1164,6 +1192,26 @@ function showDetail(i){
         histBack();
       });
     };
+    // 期間や金額を後から変えられるように、編集でフォームを開き直す
+    var me=null;
+    MONEY.entries.forEach(function(e2){if('money-'+e2.id===String(x.id))me=e2});
+    if(me){
+      dEdit.style.display='grid';
+      dEdit.onclick=function(){
+        var p={'種別':me.type==='income'?'給料・収入':(me.type==='saving'?'貯金':'支払い'),
+               '名前':me.name,'金額（円）':String(me.amount)};
+        if(me.rep==='once'){
+          p['繰り返し']='単発（1回だけ）';
+          p['日付']=String(me.date||'').replace(/\//g,'-');
+        }else{
+          p['繰り返し']='毎月';
+          p['毎月の日付']=me.day===31?'月末':String(me.day);
+          if(me.from)p['開始（いつから・任意）']=me.from.replace('/','-');
+          if(me.to)p['終了（いつまで・任意）']=me.to.replace('/','-');
+        }
+        openForm('money',p,{editId:me.id});
+      };
+    }
   }
   var h='';
   if(d.poster)h+='<div style="display:flex;gap:13px;margin-bottom:12px">'+
@@ -1354,6 +1402,8 @@ var FORMS={
    f:[['種別','select','給料・収入|支払い|貯金'],['名前','text','家賃'],['金額（円）','text','85000'],
       ['繰り返し','select','毎月|単発（1回だけ）'],
       ['毎月の日付','select','1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|月末'],
+      ['開始（いつから・任意）','month','2026-08'],
+      ['終了（いつまで・任意）','month','2027-03'],
       ['日付','date','']]},
  moneybal:{h:'貯金残高を設定',s:'現在の貯金額。見通しグラフの起点になります',
    f:[['現在の貯金額（円）','text','1250000']]}
@@ -1472,7 +1522,8 @@ function openForm(k,prefill,opts){
   if(repSel&&k==='money'){
     var repTog=function(){
       var spot=repSel.value!=='毎月';
-      [['毎月の日付',!spot],['日付',spot]].forEach(function(p){
+      [['毎月の日付',!spot],['開始（いつから・任意）',!spot],
+       ['終了（いつまで・任意）',!spot],['日付',spot]].forEach(function(p){
         var el=sheet.querySelector('[data-k="'+p[0]+'"]');if(!el)return;
         el.style.display=p[1]?'':'none';
         var lb=el.previousElementSibling;
@@ -1554,16 +1605,32 @@ function openForm(k,prefill,opts){
         var mAmt=parseInt(String(payload['金額（円）']||'').replace(/[^0-9]/g,''),10);
         var mName=String(payload['名前']||'').trim();
         if(!mName||!mAmt)return flash('名前と金額を入力してください');
-        var entry={id:'m'+Date.now(),type:MONEY_TYPE[payload['種別']]||'expense',
-          name:mName,amount:mAmt};
+        var entry={type:MONEY_TYPE[payload['種別']]||'expense',name:mName,amount:mAmt};
         if(payload['繰り返し']==='単発（1回だけ）'){
           var mD=String(payload['日付']||'').trim();   // input type=date は YYYY-MM-DD
           if(!/^\d{4}-\d{2}-\d{2}$/.test(mD))return flash('単発の日付を選んでください');
           entry.rep='once';entry.date=mD.replace(/-/g,'/');
         }else{
           entry.day=payload['毎月の日付']==='月末'?31:(parseInt(payload['毎月の日付'],10)||1);
+          // いつからいつまで（任意）。input type=month は YYYY-MM
+          var mF=String(payload['開始（いつから・任意）']||'').trim();
+          var mT=String(payload['終了（いつまで・任意）']||'').trim();
+          if(mF&&!/^\d{4}-\d{2}$/.test(mF))return flash('開始は 2026-08 の形式で入力してください');
+          if(mT&&!/^\d{4}-\d{2}$/.test(mT))return flash('終了は 2027-03 の形式で入力してください');
+          if(mF)entry.from=mF.replace('-','/');
+          if(mT)entry.to=mT.replace('-','/');
+          if(entry.from&&entry.to&&entry.to<entry.from)
+            return flash('終了は開始より後にしてください');
         }
-        MONEY.entries.push(entry);
+        if(opts.editId){
+          entry.id=opts.editId;
+          var mIx=-1;
+          MONEY.entries.forEach(function(e2,i2){if(String(e2.id)===String(opts.editId))mIx=i2});
+          if(mIx>-1)MONEY.entries[mIx]=entry;else MONEY.entries.push(entry);
+        }else{
+          entry.id='m'+Date.now();
+          MONEY.entries.push(entry);
+        }
       }else{
         var mBal=parseInt(String(payload['現在の貯金額（円）']||'').replace(/[^0-9]/g,''),10);
         if(isNaN(mBal))return flash('金額を入力してください');
