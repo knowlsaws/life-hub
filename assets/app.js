@@ -93,6 +93,12 @@ var MONEY={entries:[],balance:null},moneyTimer=null;
 var MONEY_TYPE={'給料・収入':'income','支払い':'expense','貯金':'saving'};
 var MONEY_JA={income:'収入',expense:'支払い',saving:'貯金'};
 function fmtYen(n){return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString()+'円'}
+/* 収入は緑の +、支払いは赤の −、貯金は金色。ひと目で区別できるようにする */
+function fmtYenTy(ty,n){
+  var col=ty==='income'?'var(--ok)':ty==='expense'?'var(--ember)':'var(--gold)';
+  var sign=ty==='income'?'+':ty==='expense'?'−':'';
+  return '<b style="color:'+col+';font-weight:600">'+sign+fmtYen(n)+'</b>';
+}
 /* 毎月 day 日の次の到来日。月末超え（31日→2月等）は月末に丸める */
 function nextPayDate(day){
   function mk(y,m){var last=new Date(y,m+1,0).getDate();return new Date(y,m,Math.min(day,last))}
@@ -125,10 +131,13 @@ function buildMoneyItems(){
     var ds=once?String(e.date||''):fD(nextPayDate(e.day));
     if(!ds)return;
     var ja=MONEY_JA[e.type]||e.type;
+    var when=once?'単発 · '+ds.slice(5):'毎月'+e.day+'日';
     D.push({s:'money',t:e.name,
-      m:(once?'単発 · '+ds.slice(5):'毎月'+e.day+'日')+' · '+fmtYen(e.amount)+' · '+ja,
+      m:when+' · '+fmtYen(e.amount)+' · '+ja,
       time:ds+' 00:00',due:ds,once:once?1:0,id:'money-'+e.id,
-      tag:once?ja+'（単発）':ja,cls:e.type==='income'?'g':(e.type==='saving'?'g':''),
+      ty:e.type,amt:+e.amount||0,when:when,
+      tag:once?ja+'（単発）':ja,
+      cls:e.type==='income'?'ok':(e.type==='expense'?'e':'g'),
       tags:['money','収支',ja,e.name],
       d:{sub:once?'収支記録 · 単発':'収支記録 · 毎月'+e.day+'日',
          kv:[['種別',ja+(once?'（単発）':'')],['金額',fmtYen(e.amount)],
@@ -830,9 +839,9 @@ function renderMoney(){
   }
   // 今月のサマリー（毎月の定期 + 今月の単発）
   h+='<div class="card"><h4>今月のサマリー</h4>'+
-    '<div class="kv"><span class="k">収入</span><span class="v">'+fmtYen(t.income)+'</span></div>'+
-    '<div class="kv"><span class="k">支払い</span><span class="v">'+fmtYen(t.expense)+'</span></div>'+
-    '<div class="kv"><span class="k">貯金</span><span class="v">'+fmtYen(t.saving)+'</span></div>'+
+    '<div class="kv"><span class="k">収入</span><span class="v">'+fmtYenTy('income',t.income)+'</span></div>'+
+    '<div class="kv"><span class="k">支払い</span><span class="v">'+fmtYenTy('expense',t.expense)+'</span></div>'+
+    '<div class="kv"><span class="k">貯金</span><span class="v">'+fmtYenTy('saving',t.saving)+'</span></div>'+
     '<div class="kv"><span class="k">自由に使える残り</span><span class="v" style="color:'+
       (t.left<0?'var(--ember)':'var(--gold)')+'">'+fmtYen(t.left)+'</span></div>'+
     (t.left<0?'<p class="prose" style="color:var(--ember);font-size:12px;margin-top:6px">'+
@@ -882,7 +891,8 @@ function renderMoney(){
         :days<=7?'<span class="tag g">あと'+days+'日</span>'
         :'<span class="tag">あと'+days+'日</span>';
       return '<button class="row" data-i="'+D.indexOf(x)+'">'+
-        '<span class="l"><span class="t">'+esc(x.t)+'</span><span class="m">'+esc(x.m)+'</span></span>'+
+        '<span class="l"><span class="t">'+esc(x.t)+'</span><span class="m">'+esc(x.when)+' · '+
+        fmtYenTy(x.ty,x.amt)+' · '+esc(MONEY_JA[x.ty]||x.ty)+'</span></span>'+
         '<span class="r">'+badge+'<span class="time">'+esc(x.due.slice(5))+'</span></span></button>';
     }).join('')+'</div>';
   }else h+='<div class="empty">「収支を登録」から給料・支払い・貯金を登録してください</div>';

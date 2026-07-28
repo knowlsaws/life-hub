@@ -119,6 +119,7 @@
   .tag:hover{border-color:var(--line2);color:var(--text)}
   .tag.g{background:var(--goldd);color:var(--gold);border-color:rgba(207,164,92,.28)}
   .tag.e{background:var(--emberd);color:var(--ember);border-color:rgba(192,103,74,.3)}
+  .tag.ok{background:rgba(143,169,140,.14);color:var(--ok);border-color:rgba(143,169,140,.3)}
   .tag.n{background:var(--s2)}
   .empty{text-align:center;color:var(--faint);font-size:12px;padding:36px 10px}
   .ask{display:flex;align-items:center;gap:9px;width:100%;cursor:pointer;font-family:var(--font);
