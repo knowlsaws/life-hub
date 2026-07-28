@@ -102,8 +102,18 @@ function nextPayDate(day){
   return d;
 }
 function moneyMonthly(){
-  var t={income:0,expense:0,saving:0};
-  MONEY.entries.forEach(function(e){t[e.type]=(t[e.type]||0)+(+e.amount||0)});
+  // 毎月の定期に加え、単発（rep:'once'）は日付が今月のものだけ算入する
+  var t={income:0,expense:0,saving:0,recSaving:0};
+  var ym=TODAY.getFullYear()+'/'+pad(TODAY.getMonth()+1);
+  MONEY.entries.forEach(function(e){
+    var amt=+e.amount||0;
+    if(e.rep==='once'){
+      if(String(e.date||'').slice(0,7)===ym)t[e.type]+=amt;
+    }else{
+      t[e.type]+=amt;
+      if(e.type==='saving')t.recSaving+=amt;
+    }
+  });
   t.left=t.income-t.expense-t.saving;
   return t;
 }
@@ -111,15 +121,18 @@ function moneyMonthly(){
 function buildMoneyItems(){
   D=D.filter(function(x){return x.s!=='money'});
   MONEY.entries.forEach(function(e){
-    var d=nextPayDate(e.day),ds=fD(d);
+    var once=e.rep==='once';
+    var ds=once?String(e.date||''):fD(nextPayDate(e.day));
+    if(!ds)return;
     var ja=MONEY_JA[e.type]||e.type;
     D.push({s:'money',t:e.name,
-      m:'毎月'+e.day+'日 · '+fmtYen(e.amount)+' · '+ja,
-      time:ds+' 00:00',due:ds,id:'money-'+e.id,
-      tag:ja,cls:e.type==='income'?'g':(e.type==='saving'?'g':''),
+      m:(once?'単発 · '+ds.slice(5):'毎月'+e.day+'日')+' · '+fmtYen(e.amount)+' · '+ja,
+      time:ds+' 00:00',due:ds,once:once?1:0,id:'money-'+e.id,
+      tag:once?ja+'（単発）':ja,cls:e.type==='income'?'g':(e.type==='saving'?'g':''),
       tags:['money','収支',ja,e.name],
-      d:{sub:'収支記録 · 毎月'+e.day+'日',
-         kv:[['種別',ja],['金額',fmtYen(e.amount)],['毎月の日付',e.day+'日'],['次回',ds]]}});
+      d:{sub:once?'収支記録 · 単発':'収支記録 · 毎月'+e.day+'日',
+         kv:[['種別',ja+(once?'（単発）':'')],['金額',fmtYen(e.amount)],
+             once?['日付',ds]:['毎月の日付',e.day+'日'],[once?'区分':'次回',once?'1回だけ':ds]]}});
   });
 }
 function saveMoney(){
@@ -481,7 +494,9 @@ function renderHome(){
     }
     if(k==='money'){
       var mt=moneyMonthly();
-      var nx2=xs.slice().sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
+      var mtd=fD(TODAY);   // 済んだ単発は「次」に出さない
+      var nx2=xs.filter(function(x){return String(x.due)>=mtd})
+        .sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
       return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+nx2.t:'')):'未登録',
               MONEY.balance?('貯金 '+fmtYen(MONEY.balance.amount)):'—'];
     }
@@ -813,8 +828,8 @@ function renderMoney(){
       '登録すると、今後の貯金の見通しと支払日をここで確認できます。</div>';
     return {act:act,body:h};
   }
-  // 今月のサマリー
-  h+='<div class="card"><h4>毎月のサマリー</h4>'+
+  // 今月のサマリー（毎月の定期 + 今月の単発）
+  h+='<div class="card"><h4>今月のサマリー</h4>'+
     '<div class="kv"><span class="k">収入</span><span class="v">'+fmtYen(t.income)+'</span></div>'+
     '<div class="kv"><span class="k">支払い</span><span class="v">'+fmtYen(t.expense)+'</span></div>'+
     '<div class="kv"><span class="k">貯金</span><span class="v">'+fmtYen(t.saving)+'</span></div>'+
@@ -822,35 +837,48 @@ function renderMoney(){
       (t.left<0?'var(--ember)':'var(--gold)')+'">'+fmtYen(t.left)+'</span></div>'+
     (t.left<0?'<p class="prose" style="color:var(--ember);font-size:12px;margin-top:6px">'+
       '毎月の支出が収入を上回っています。</p>':'')+'</div>';
-  // 貯金の見通し（現在残高 + 毎月の貯金額 × 12ヶ月）
+  // 貯金の見通し（現在残高 + 毎月の貯金 × 12ヶ月。単発の貯金は該当月に加算）
   if(MONEY.balance){
     var bal=+MONEY.balance.amount||0,series=[];
+    var onceSav={};
+    MONEY.entries.forEach(function(e){
+      if(e.rep==='once'&&e.type==='saving'){
+        var mk=String(e.date||'').slice(0,7);
+        onceSav[mk]=(onceSav[mk]||0)+(+e.amount||0);
+      }
+    });
+    var acc=bal;
     for(var i=0;i<=12;i++){
       var md=new Date(TODAY.getFullYear(),TODAY.getMonth()+i,1);
-      series.push([md.getFullYear()+'/'+pad(md.getMonth()+1),
-        Math.round((bal+t.saving*i)/10000)]);
+      var ym=md.getFullYear()+'/'+pad(md.getMonth()+1);
+      if(i>0)acc+=t.recSaving+(onceSav[ym]||0);
+      series.push([ym,Math.round(acc/10000)]);
     }
     h+='<div class="card"><h4>貯金の見通し</h4>'+
       '<div class="kv"><span class="k">現在の貯金（'+esc(MONEY.balance.asOf||'')+'時点）</span>'+
       '<span class="v">'+fmtYen(bal)+'</span></div>'+
-      (t.saving>0?spark(series,'万円')+
+      (acc>bal?spark(series,'万円')+
         '<div class="kv" style="border-top:0"><span class="k">1年後の見込み</span><span class="v">'+
-        fmtYen(bal+t.saving*12)+'</span></div>'
+        fmtYen(acc)+'</span></div>'
        :'<p class="prose" style="color:var(--dim);font-size:12px">毎月の貯金を登録すると'+
         '見通しグラフが表示されます。</p>')+'</div>';
   }else{
     h+='<div class="card"><h4>貯金の見通し</h4><p class="prose" style="color:var(--dim);font-size:12px">'+
       '「貯金残高を設定」で現在の貯金額を登録すると、毎月の貯金額から1年先までの見通しを表示します。</p></div>';
   }
-  // 支払日・給料日（次回日付順。あとN日はこの端末の今日から計算）
-  var rows=D.filter(function(x){return x.s==='money'&&match(x)})
-    .sort(function(a,b){return String(a.due)<String(b.due)?-1:1});
+  // 支払日・給料日（これからの分を日付順に、済んだ単発はその後ろに）
+  var all=D.filter(function(x){return x.s==='money'&&match(x)});
+  var td0=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()),tds=fD(td0);
+  var rows=all.filter(function(x){return x.due>=tds})
+    .sort(function(a,b){return String(a.due)<String(b.due)?-1:1})
+    .concat(all.filter(function(x){return x.due<tds})
+      .sort(function(a,b){return String(a.due)>String(b.due)?-1:1}));
   h+='<div class="sechead"><span class="n">支払日・給料日</span><span class="c">'+rows.length+' 件</span></div>';
   if(rows.length){
-    var td0=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
     h+='<div class="list">'+rows.map(function(x){
       var days=Math.round((new Date(x.due.replace(/\//g,'-'))-td0)/864e5);
-      var badge=days===0?'<span class="tag e">今日</span>'
+      var badge=days<0?'<span class="tag">済</span>'
+        :days===0?'<span class="tag e">今日</span>'
         :days<=7?'<span class="tag g">あと'+days+'日</span>'
         :'<span class="tag">あと'+days+'日</span>';
       return '<button class="row" data-i="'+D.indexOf(x)+'">'+
@@ -1312,9 +1340,11 @@ var FORMS={
    f:[['調べたい内容','text','量子コンピュータ']]},
  essential:{h:'必需品を登録',s:'製品名だけで OK。値段・消耗頻度・購入場所・類似製品は AI が調べて記入します',
    f:[['製品名','text','例: ジレット フュージョン 替刃 8個入']]},
- money:{h:'収支を登録',s:'毎月の給料・支払い・貯金を登録すると、貯金の見通しと支払日を確認できます',
+ money:{h:'収支を登録',s:'毎月の定期と、単発（1回だけ）の支払い・収入を登録できます',
    f:[['種別','select','給料・収入|支払い|貯金'],['名前','text','家賃'],['金額（円）','text','85000'],
-      ['毎月の日付','select','1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|月末']]},
+      ['繰り返し','select','毎月|単発（1回だけ）'],
+      ['毎月の日付','select','1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|月末'],
+      ['日付','date','']]},
  moneybal:{h:'貯金残高を設定',s:'現在の貯金額。見通しグラフの起点になります',
    f:[['現在の貯金額（円）','text','1250000']]}
 };
@@ -1427,6 +1457,20 @@ function openForm(k,prefill,opts){
       placeTimer=setTimeout(function(){Places.search(v,showP)},700);
     });
   }
+  // 収支フォーム: 「毎月」なら毎月の日付、「単発」なら日付だけを見せる
+  var repSel=sheet.querySelector('select[data-k="繰り返し"]');
+  if(repSel&&k==='money'){
+    var repTog=function(){
+      var spot=repSel.value!=='毎月';
+      [['毎月の日付',!spot],['日付',spot]].forEach(function(p){
+        var el=sheet.querySelector('[data-k="'+p[0]+'"]');if(!el)return;
+        el.style.display=p[1]?'':'none';
+        var lb=el.previousElementSibling;
+        if(lb&&lb.classList.contains('fl'))lb.style.display=p[1]?'':'none';
+      });
+    };
+    repSel.addEventListener('change',repTog);repTog();
+  }
   function wireDishes(){
     [].forEach.call(sheet.querySelectorAll('.dishIn'),function(inp){
       if(inp.dataset.w)return;inp.dataset.w='1';
@@ -1500,9 +1544,16 @@ function openForm(k,prefill,opts){
         var mAmt=parseInt(String(payload['金額（円）']||'').replace(/[^0-9]/g,''),10);
         var mName=String(payload['名前']||'').trim();
         if(!mName||!mAmt)return flash('名前と金額を入力してください');
-        var mDay=payload['毎月の日付']==='月末'?31:(parseInt(payload['毎月の日付'],10)||1);
-        MONEY.entries.push({id:'m'+Date.now(),type:MONEY_TYPE[payload['種別']]||'expense',
-          name:mName,amount:mAmt,day:mDay});
+        var entry={id:'m'+Date.now(),type:MONEY_TYPE[payload['種別']]||'expense',
+          name:mName,amount:mAmt};
+        if(payload['繰り返し']==='単発（1回だけ）'){
+          var mD=String(payload['日付']||'').trim();   // input type=date は YYYY-MM-DD
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(mD))return flash('単発の日付を選んでください');
+          entry.rep='once';entry.date=mD.replace(/-/g,'/');
+        }else{
+          entry.day=payload['毎月の日付']==='月末'?31:(parseInt(payload['毎月の日付'],10)||1);
+        }
+        MONEY.entries.push(entry);
       }else{
         var mBal=parseInt(String(payload['現在の貯金額（円）']||'').replace(/[^0-9]/g,''),10);
         if(isNaN(mBal))return flash('金額を入力してください');

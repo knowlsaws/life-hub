@@ -446,7 +446,10 @@ var money={
   {id:'md2',type:'expense',name:'家賃',           amount:85000, day:27},
   {id:'md3',type:'expense',name:'クレカ引き落とし',amount:62000, day:27},
   {id:'md4',type:'expense',name:'光熱費・通信費',  amount:18000, day:20},
-  {id:'md5',type:'saving', name:'積立貯金',        amount:50000, day:26}
+  {id:'md5',type:'saving', name:'積立貯金',        amount:50000, day:26},
+  {id:'md6',type:'expense',name:'ふるさと納税',    amount:30000, rep:'once',date:'2026/08/05'},
+  {id:'md7',type:'expense',name:'コンサートチケット',amount:12000,rep:'once',date:'2026/07/10'},
+  {id:'md8',type:'saving', name:'ボーナス貯金',    amount:200000,rep:'once',date:'2026/12/10'}
  ]
 };
 
