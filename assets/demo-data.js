@@ -449,7 +449,9 @@ var money={
   {id:'md5',type:'saving', name:'積立貯金',        amount:50000, day:26},
   {id:'md6',type:'expense',name:'ふるさと納税',    amount:30000, rep:'once',date:'2026/08/05'},
   {id:'md7',type:'expense',name:'コンサートチケット',amount:12000,rep:'once',date:'2026/07/10'},
-  {id:'md8',type:'saving', name:'ボーナス貯金',    amount:200000,rep:'once',date:'2026/12/10'}
+  {id:'md8',type:'saving', name:'ボーナス貯金',    amount:200000,rep:'once',date:'2026/12/10'},
+  {id:'md9',type:'expense',name:'英会話レッスン',  amount:12000, day:1, from:'2026/09'},
+  {id:'md10',type:'expense',name:'動画サブスク',   amount:1500,  day:15,to:'2026/06'}
  ]
 };
 

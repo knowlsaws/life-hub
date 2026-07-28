@@ -271,13 +271,14 @@
   .chk .en{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
   .chk .lb{flex:1;min-width:0}
   /* 16px 未満だと iOS がフォーカス時に自動ズームするため、入力欄は 16px を下回らせない */
-  select,input[type=text],input[type=time],input[type=date],input[type=number],
+  select,input[type=text],input[type=time],input[type=date],input[type=month],input[type=number],
   input[type=password],input[type=search]{width:100%;max-width:100%;min-width:0;box-sizing:border-box;
     background:var(--s2);color:var(--text);
     border:1px solid var(--line2);border-radius:10px;padding:10px 11px;font-size:16px;font-family:var(--font);outline:0}
   /* iOS の date/time は既定の内在幅が広く、枠を押し広げてしまう */
-  input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block}
-  input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+  input[type=date],input[type=time],input[type=month]{-webkit-appearance:none;appearance:none;display:block}
+  input[type=date]::-webkit-date-and-time-value,
+  input[type=month]::-webkit-date-and-time-value{text-align:left;margin:0}
   .sheet{overflow-x:hidden}
   label.fl{display:block;font-size:10.5px;color:var(--dim);margin:11px 0 5px}
   .bar{height:4px;border-radius:4px;background:var(--s3);overflow:hidden;margin-top:8px}
