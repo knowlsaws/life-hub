@@ -439,5 +439,16 @@ var events=[
  "2027/11/23": "勤労感謝の日"
 };
 
-  return { items: items, events: events, terms: terms, holidays: holidays };
+var money={
+ balance:{amount:1250000,asOf:'2026/07/20'},
+ entries:[
+  {id:'md1',type:'income', name:'給料',           amount:320000,day:25},
+  {id:'md2',type:'expense',name:'家賃',           amount:85000, day:27},
+  {id:'md3',type:'expense',name:'クレカ引き落とし',amount:62000, day:27},
+  {id:'md4',type:'expense',name:'光熱費・通信費',  amount:18000, day:20},
+  {id:'md5',type:'saving', name:'積立貯金',        amount:50000, day:26}
+ ]
+};
+
+  return { items: items, events: events, terms: terms, holidays: holidays, money: money };
 })();
