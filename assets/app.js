@@ -92,7 +92,7 @@ var GREETING={text:''};
 var MONEY={entries:[],balance:null},moneyTimer=null;
 var MONEY_TYPE={'給料・収入':'income','支払い':'expense','貯金':'saving'};
 var MONEY_JA={income:'収入',expense:'支払い',saving:'貯金'};
-function fmtYen(n){return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString()+'円'}
+function fmtYen(n){return (n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString()+'円'}
 /* 収入は緑の +、支払いは赤の −、貯金は金色。ひと目で区別できるようにする */
 function fmtYenTy(ty,n){
   var col=ty==='income'?'var(--ok)':ty==='expense'?'var(--ember)':'var(--gold)';
