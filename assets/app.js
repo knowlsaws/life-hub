@@ -226,6 +226,32 @@ function reconcileEssentials(){
   PENDING_ESS.forEach(function(p){D.unshift(p)});
   persistEss();
 }
+/* ニュースの追跡停止。停止した slug はサーバー反映まで端末にも覚えておき、
+ * 同期のたびに「追跡中」バッジやストーリー項目が復活しないようにする */
+var STOP_NEWS=[];
+try{STOP_NEWS=JSON.parse(localStorage.getItem('lifehub.stopNews')||'[]')||[]}catch(e){}
+function persistNewsStops(){
+  try{localStorage.setItem('lifehub.stopNews',JSON.stringify(STOP_NEWS))}catch(e){}
+}
+function applyNewsStop(slug){
+  // ストーリー単体の項目は一覧から消し、朝刊項目は追跡中の印だけ外す
+  D=D.filter(function(x){return !(x.s==='news'&&x.id==='news-story-'+slug)});
+  D.forEach(function(x){
+    if(x.s!=='news'||x.slug!==slug)return;
+    x.story=0;
+    if(x.badges)x.badges=x.badges.filter(function(b){return b[0]!=='追跡中'});
+    if(x.tags)x.tags=x.tags.filter(function(t){return t!=='追跡中'});
+  });
+}
+function reconcileNewsStops(){
+  // サーバーがもう追跡していない slug の墓標は掃除、残っている間は適用し続ける
+  STOP_NEWS=STOP_NEWS.filter(function(slug){
+    return D.some(function(x){
+      return x.s==='news'&&x.story&&(x.slug===slug||x.id==='news-story-'+slug)});
+  });
+  STOP_NEWS.forEach(applyNewsStop);
+  persistNewsStops();
+}
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
 
 function loadLocalState(){
@@ -1273,9 +1299,11 @@ function showDetail(i){
       return TERMS[t]?'<button class="tag g" data-term="'+esc(t)+'">'+esc(t)+'</button>'
                      :'<span class="tag">'+esc(t)+'</span>'}).join('')+'</div></div>';
   if(d.tl)h+='<div class="card"><h4>続報（最新が上）</h4><div class="tl">'+d.tl.map(function(t){
-    return '<div class="it"><div class="tt">'+esc(t.t)+'</div><div class="tm">'+esc(t.m)+'</div></div>'}).join('')+'</div>'+
-    '<div class="lnk" style="border-top:1px solid var(--line);color:var(--dim)">この話題は不要 — 別のニュースで補充</div></div>';
+    return '<div class="it"><div class="tt">'+esc(t.t)+'</div><div class="tm">'+esc(t.m)+'</div></div>'}).join('')+'</div></div>';
   if(d.raw)h+='<div class="card"><h4>メール本文</h4><div class="mail-body">'+esc(d.raw)+'</div></div>';
+  // 追跡中のニュースは、ここから続報の自動収集を止められる
+  if(x.s==='news'&&x.story&&x.slug)
+    h+='<button class="danger" id="newsStopBtn">この話題の追跡を停止</button>';
   if(isWork(x.s)){
     var mr=x.myRate||0;
     h+='<div class="card"><h4>自己評価とメモ</h4><div class="stars" id="myStars">'+
@@ -1327,6 +1355,29 @@ function showDetail(i){
   dBody.querySelectorAll('[data-tag]').forEach(function(el){
     el.onclick=function(){goTag(el.getAttribute('data-tag'))};
   });
+  var nsBtn=document.getElementById('newsStopBtn');
+  if(nsBtn)nsBtn.onclick=function(){
+    sheet.innerHTML='<h3>追跡を停止しますか</h3><div class="sh">'+esc(x.t)+'</div>'+
+      '<p class="prose" style="color:var(--dim);font-size:12.5px;margin-top:4px">'+
+      '今後この話題の続報は自動収集されません。掲載済みの記事はそのまま残ります。</p>'+
+      '<button class="danger" id="cfYes" style="margin-top:14px">追跡を停止する</button>'+
+      '<button class="btn sec" id="cfNo">キャンセル</button>';
+    mask.classList.add('show');sheet.scrollTop=0;
+    document.getElementById('cfNo').onclick=function(){mask.classList.remove('show')};
+    document.getElementById('cfYes').onclick=function(){
+      mask.classList.remove('show');
+      var slug=x.slug;
+      if(STOP_NEWS.indexOf(slug)<0)STOP_NEWS.push(slug);
+      applyNewsStop(slug);persistNewsStops();
+      histBack();
+      if(GH.hasToken())
+        GH.pushInbox('news-stop',{slug:slug,title:x.t}).then(function(){
+          setSync('追跡を停止しました',true);
+        }).catch(function(){
+          notify('追跡停止の送信に失敗しました。通信を確認してもう一度お試しください。',true);
+        });
+    };
+  };
   var stSel=document.getElementById('stSel');
   if(stSel&&d.status)stSel.onchange=function(){
     var i2=d.status.indexOf(stSel.value);
@@ -1979,6 +2030,7 @@ function useDemo(){
   buildMoneyItems();
   TERMS=DEMO.terms||{};buildTermRe();
   if(DEMO.holidays)HOL=DEMO.holidays;
+  reconcileNewsStops();
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
   if(noticeEl)noticeEl.hidden=true;
@@ -2006,6 +2058,7 @@ function loadAll(){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=mergeRemoteState(res[1]);persistLocal();
     reconcileEssentials();
+    reconcileNewsStops();
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     // money.json が取れない間は端末のバックアップで動く（保存失敗の救済）
