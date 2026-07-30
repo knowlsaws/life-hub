@@ -226,10 +226,14 @@ function reconcileEssentials(){
   PENDING_ESS.forEach(function(p){D.unshift(p)});
   persistEss();
 }
-/* ニュースの追跡停止。停止した slug はサーバー反映まで端末にも覚えておき、
- * 同期のたびに「追跡中」バッジやストーリー項目が復活しないようにする */
-var STOP_NEWS=[];
-try{STOP_NEWS=JSON.parse(localStorage.getItem('lifehub.stopNews')||'[]')||[]}catch(e){}
+/* ニュースの追跡停止。停止 {slug,t,ts,sent} はサーバー反映まで端末にも覚えておき、
+ * 同期のたびに「追跡中」バッジやストーリー項目が復活しないようにする。
+ * sent=0 は inbox への送信がまだ成功していない印で、同期のたびに自動で再送する */
+var STOP_NEWS=[],nsFlushing=false,nsNextTry=0;
+var NS_GRACE=3*864e5;    // 消えた観測後もこの期間は残す（古い vault からの再 publish 対策）
+var NS_MAX_AGE=30*864e5; // 送信できないまま話題が消えた場合の最終掃除
+try{STOP_NEWS=(JSON.parse(localStorage.getItem('lifehub.stopNews')||'[]')||[])
+  .filter(function(e){return e&&e.slug})}catch(e){}
 function persistNewsStops(){
   try{localStorage.setItem('lifehub.stopNews',JSON.stringify(STOP_NEWS))}catch(e){}
 }
@@ -243,14 +247,47 @@ function applyNewsStop(slug){
     if(x.tags)x.tags=x.tags.filter(function(t){return t!=='追跡中'});
   });
 }
-function reconcileNewsStops(){
-  // サーバーがもう追跡していない slug の墓標は掃除、残っている間は適用し続ける
-  STOP_NEWS=STOP_NEWS.filter(function(slug){
-    return D.some(function(x){
-      return x.s==='news'&&x.story&&(x.slug===slug||x.id==='news-story-'+slug)});
+/* newsOk=false は news.json の取得に失敗した同期。「サーバーから消えた」とは
+ * 区別できないので、そのときは墓標を捨てない */
+function reconcileNewsStops(newsOk){
+  STOP_NEWS=STOP_NEWS.filter(function(e){
+    if(Date.now()-(+e.ts||0)>NS_MAX_AGE)return false;
+    var present=D.some(function(x){
+      return x.s==='news'&&x.story&&(x.slug===e.slug||x.id==='news-story-'+e.slug)});
+    if(present)return true;
+    if(newsOk===false)return true;
+    // 消えた直後は、並行していた古い vault の再 publish で復活し得るため残す。
+    // 送信が済んでいないものは、送信できるまで捨てない
+    return !e.sent||(Date.now()-(+e.ts||0))<NS_GRACE;
   });
-  STOP_NEWS.forEach(applyNewsStop);
+  STOP_NEWS.forEach(function(e){applyNewsStop(e.slug)});
   persistNewsStops();
+}
+/* 未送信の停止を inbox へ送る。失敗しても墓標は残り、次の同期で再送する */
+function flushNewsStops(interactive){
+  if(!GH.hasToken()||nsFlushing)return;
+  if(!interactive&&Date.now()<nsNextTry)return;
+  var pend=STOP_NEWS.filter(function(e){return !e.sent});
+  if(!pend.length)return;
+  nsFlushing=true;
+  var chain=Promise.resolve(),fail=false;
+  pend.forEach(function(e){
+    chain=chain.then(function(){
+      return GH.pushInbox('news-stop',{slug:e.slug,title:e.t||''})
+        .then(function(){e.sent=1;persistNewsStops()})
+        .catch(function(){fail=true});
+    });
+  });
+  chain.then(function(){
+    nsFlushing=false;
+    if(fail){
+      nsNextTry=Date.now()+60000;
+      if(interactive)notify('追跡停止の送信に失敗しました。接続が戻り次第、自動で再送します。',true);
+    }else{
+      nsNextTry=0;
+      if(interactive)setSync('追跡を停止しました',true);
+    }
+  });
 }
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
 
@@ -1367,15 +1404,11 @@ function showDetail(i){
     document.getElementById('cfYes').onclick=function(){
       mask.classList.remove('show');
       var slug=x.slug;
-      if(STOP_NEWS.indexOf(slug)<0)STOP_NEWS.push(slug);
+      if(!STOP_NEWS.some(function(e){return e.slug===slug}))
+        STOP_NEWS.push({slug:slug,t:x.t,ts:Date.now(),sent:0});
       applyNewsStop(slug);persistNewsStops();
       histBack();
-      if(GH.hasToken())
-        GH.pushInbox('news-stop',{slug:slug,title:x.t}).then(function(){
-          setSync('追跡を停止しました',true);
-        }).catch(function(){
-          notify('追跡停止の送信に失敗しました。通信を確認してもう一度お試しください。',true);
-        });
+      flushNewsStops(true);
     };
   };
   var stSel=document.getElementById('stSel');
@@ -2030,12 +2063,13 @@ function useDemo(){
   buildMoneyItems();
   TERMS=DEMO.terms||{};buildTermRe();
   if(DEMO.holidays)HOL=DEMO.holidays;
-  reconcileNewsStops();
+  reconcileNewsStops(true);
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
   if(noticeEl)noticeEl.hidden=true;
 }
 function loadAll(){
+  var newsOk=false;
   return Promise.all(SECKEYS.map(function(k){
     return GH.getJSON('.web/'+k+'.json').catch(function(){return null});
   })).then(function(res){
@@ -2043,6 +2077,7 @@ function loadAll(){
     res.forEach(function(j,i){
       if(!j)return;
       var k=SECKEYS[i];
+      if(k==='news')newsOk=true;   // 取得失敗と「追跡が消えた」を区別するため
       (j.items||[]).forEach(function(it){it.s=it.s||k;items.push(it)});
       (j.events||[]).forEach(function(ev){events.push(ev)});
     });
@@ -2058,7 +2093,7 @@ function loadAll(){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=mergeRemoteState(res[1]);persistLocal();
     reconcileEssentials();
-    reconcileNewsStops();
+    reconcileNewsStops(newsOk);
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     // money.json が取れない間は端末のバックアップで動く（保存失敗の救済）
@@ -2075,6 +2110,7 @@ function sync(){
   syncing=true;
   return GH.checkManifest().then(function(r){
     if(r.manifest)MANIFEST=r.manifest;
+    flushNewsStops();   // 未送信の追跡停止があれば再送（60秒間隔）
     return r.changed?loadAll():null;
   }).then(function(){
     setSync('同期済み',true);
