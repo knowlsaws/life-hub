@@ -226,6 +226,69 @@ function reconcileEssentials(){
   PENDING_ESS.forEach(function(p){D.unshift(p)});
   persistEss();
 }
+/* ニュースの追跡停止。停止 {slug,t,ts,sent} はサーバー反映まで端末にも覚えておき、
+ * 同期のたびに「追跡中」バッジやストーリー項目が復活しないようにする。
+ * sent=0 は inbox への送信がまだ成功していない印で、同期のたびに自動で再送する */
+var STOP_NEWS=[],nsFlushing=false,nsNextTry=0;
+var NS_GRACE=3*864e5;    // 消えた観測後もこの期間は残す（古い vault からの再 publish 対策）
+var NS_MAX_AGE=30*864e5; // 送信できないまま話題が消えた場合の最終掃除
+try{STOP_NEWS=(JSON.parse(localStorage.getItem('lifehub.stopNews')||'[]')||[])
+  .filter(function(e){return e&&e.slug})}catch(e){}
+function persistNewsStops(){
+  try{localStorage.setItem('lifehub.stopNews',JSON.stringify(STOP_NEWS))}catch(e){}
+}
+function applyNewsStop(slug){
+  // ストーリー単体の項目は一覧から消し、朝刊項目は追跡中の印だけ外す
+  D=D.filter(function(x){return !(x.s==='news'&&x.id==='news-story-'+slug)});
+  D.forEach(function(x){
+    if(x.s!=='news'||x.slug!==slug)return;
+    x.story=0;
+    if(x.badges)x.badges=x.badges.filter(function(b){return b[0]!=='追跡中'});
+    if(x.tags)x.tags=x.tags.filter(function(t){return t!=='追跡中'});
+  });
+}
+/* newsOk=false は news.json の取得に失敗した同期。「サーバーから消えた」とは
+ * 区別できないので、そのときは墓標を捨てない */
+function reconcileNewsStops(newsOk){
+  STOP_NEWS=STOP_NEWS.filter(function(e){
+    if(Date.now()-(+e.ts||0)>NS_MAX_AGE)return false;
+    var present=D.some(function(x){
+      return x.s==='news'&&x.story&&(x.slug===e.slug||x.id==='news-story-'+e.slug)});
+    if(present)return true;
+    if(newsOk===false)return true;
+    // 消えた直後は、並行していた古い vault の再 publish で復活し得るため残す。
+    // 送信が済んでいないものは、送信できるまで捨てない
+    return !e.sent||(Date.now()-(+e.ts||0))<NS_GRACE;
+  });
+  STOP_NEWS.forEach(function(e){applyNewsStop(e.slug)});
+  persistNewsStops();
+}
+/* 未送信の停止を inbox へ送る。失敗しても墓標は残り、次の同期で再送する */
+function flushNewsStops(interactive){
+  if(!GH.hasToken()||nsFlushing)return;
+  if(!interactive&&Date.now()<nsNextTry)return;
+  var pend=STOP_NEWS.filter(function(e){return !e.sent});
+  if(!pend.length)return;
+  nsFlushing=true;
+  var chain=Promise.resolve(),fail=false;
+  pend.forEach(function(e){
+    chain=chain.then(function(){
+      return GH.pushInbox('news-stop',{slug:e.slug,title:e.t||''})
+        .then(function(){e.sent=1;persistNewsStops()})
+        .catch(function(){fail=true});
+    });
+  });
+  chain.then(function(){
+    nsFlushing=false;
+    if(fail){
+      nsNextTry=Date.now()+60000;
+      if(interactive)notify('追跡停止の送信に失敗しました。接続が戻り次第、自動で再送します。',true);
+    }else{
+      nsNextTry=0;
+      if(interactive)setSync('追跡を停止しました',true);
+    }
+  });
+}
 function stateKey(x){return x.id||(x.s+'|'+x.t)}
 
 function loadLocalState(){
@@ -1273,9 +1336,11 @@ function showDetail(i){
       return TERMS[t]?'<button class="tag g" data-term="'+esc(t)+'">'+esc(t)+'</button>'
                      :'<span class="tag">'+esc(t)+'</span>'}).join('')+'</div></div>';
   if(d.tl)h+='<div class="card"><h4>続報（最新が上）</h4><div class="tl">'+d.tl.map(function(t){
-    return '<div class="it"><div class="tt">'+esc(t.t)+'</div><div class="tm">'+esc(t.m)+'</div></div>'}).join('')+'</div>'+
-    '<div class="lnk" style="border-top:1px solid var(--line);color:var(--dim)">この話題は不要 — 別のニュースで補充</div></div>';
+    return '<div class="it"><div class="tt">'+esc(t.t)+'</div><div class="tm">'+esc(t.m)+'</div></div>'}).join('')+'</div></div>';
   if(d.raw)h+='<div class="card"><h4>メール本文</h4><div class="mail-body">'+esc(d.raw)+'</div></div>';
+  // 追跡中のニュースは、ここから続報の自動収集を止められる
+  if(x.s==='news'&&x.story&&x.slug)
+    h+='<button class="danger" id="newsStopBtn">この話題の追跡を停止</button>';
   if(isWork(x.s)){
     var mr=x.myRate||0;
     h+='<div class="card"><h4>自己評価とメモ</h4><div class="stars" id="myStars">'+
@@ -1327,6 +1392,25 @@ function showDetail(i){
   dBody.querySelectorAll('[data-tag]').forEach(function(el){
     el.onclick=function(){goTag(el.getAttribute('data-tag'))};
   });
+  var nsBtn=document.getElementById('newsStopBtn');
+  if(nsBtn)nsBtn.onclick=function(){
+    sheet.innerHTML='<h3>追跡を停止しますか</h3><div class="sh">'+esc(x.t)+'</div>'+
+      '<p class="prose" style="color:var(--dim);font-size:12.5px;margin-top:4px">'+
+      '今後この話題の続報は自動収集されません。掲載済みの記事はそのまま残ります。</p>'+
+      '<button class="danger" id="cfYes" style="margin-top:14px">追跡を停止する</button>'+
+      '<button class="btn sec" id="cfNo">キャンセル</button>';
+    mask.classList.add('show');sheet.scrollTop=0;
+    document.getElementById('cfNo').onclick=function(){mask.classList.remove('show')};
+    document.getElementById('cfYes').onclick=function(){
+      mask.classList.remove('show');
+      var slug=x.slug;
+      if(!STOP_NEWS.some(function(e){return e.slug===slug}))
+        STOP_NEWS.push({slug:slug,t:x.t,ts:Date.now(),sent:0});
+      applyNewsStop(slug);persistNewsStops();
+      histBack();
+      flushNewsStops(true);
+    };
+  };
   var stSel=document.getElementById('stSel');
   if(stSel&&d.status)stSel.onchange=function(){
     var i2=d.status.indexOf(stSel.value);
@@ -1979,11 +2063,13 @@ function useDemo(){
   buildMoneyItems();
   TERMS=DEMO.terms||{};buildTermRe();
   if(DEMO.holidays)HOL=DEMO.holidays;
+  reconcileNewsStops(true);
   GREETING={text:'デモモードです。右上の接続設定からトークンを登録すると、あなたのデータが表示されます。'};
   setSync('デモ',false);render();
   if(noticeEl)noticeEl.hidden=true;
 }
 function loadAll(){
+  var newsOk=false;
   return Promise.all(SECKEYS.map(function(k){
     return GH.getJSON('.web/'+k+'.json').catch(function(){return null});
   })).then(function(res){
@@ -1991,6 +2077,7 @@ function loadAll(){
     res.forEach(function(j,i){
       if(!j)return;
       var k=SECKEYS[i];
+      if(k==='news')newsOk=true;   // 取得失敗と「追跡が消えた」を区別するため
       (j.items||[]).forEach(function(it){it.s=it.s||k;items.push(it)});
       (j.events||[]).forEach(function(ev){events.push(ev)});
     });
@@ -2006,6 +2093,7 @@ function loadAll(){
     if(res[0]&&res[0].text)GREETING=res[0];
     STATE=mergeRemoteState(res[1]);persistLocal();
     reconcileEssentials();
+    reconcileNewsStops(newsOk);
     TERMS=res[2]||{};buildTermRe();
     if(res[3])HOL=res[3];
     // money.json が取れない間は端末のバックアップで動く（保存失敗の救済）
@@ -2022,6 +2110,7 @@ function sync(){
   syncing=true;
   return GH.checkManifest().then(function(r){
     if(r.manifest)MANIFEST=r.manifest;
+    flushNewsStops();   // 未送信の追跡停止があれば再送（60秒間隔）
     return r.changed?loadAll():null;
   }).then(function(){
     setSync('同期済み',true);

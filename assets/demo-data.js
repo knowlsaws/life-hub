@@ -171,6 +171,7 @@ var items=[
    body:'デモ表示。実データは初回の自動調査で最新の公式諸元に置き換わります。'}},
 
 {s:'news',t:'国内でAI規制の新指針が公表',m:'読むべき · 3紙が一致して報道',time:'2026/07/20 07:00',nw:1,cat:'must',story:1,
+ slug:'ai-regulation-guideline',
  badges:[['読むべき','g'],['追跡中','g']],
  tags:['news','AI','規制','国内','信頼度/高','追跡中'],
  d:{sub:'朝刊 2026/07/20 07:00 · 出典3件',
@@ -181,6 +182,7 @@ var items=[
  d:{sub:'朝刊 2026/07/20 07:00',kv:[['分類','興味のある分野'],['トピック','Apple'],['出典','Apple Newsroom']],
    body:'次期OSのベータが開発者向けに公開。オンデバイス処理の強化が中心。'}},
 {s:'news',t:'大規模通信障害 — 続報',m:'トレンド · 続報3件（最新が上）',time:'2026/07/19 22:10',nw:0,cat:'trend',story:1,
+ slug:'telecom-outage',id:'news-story-telecom-outage',
  badges:[['トレンド',''],['追跡中','g']],
  tags:['news','通信','障害','国内','トレンド','追跡中'],
  d:{sub:'stories/大規模通信障害 · status: active',
