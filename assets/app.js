@@ -1018,6 +1018,7 @@ function renderMoney(){
  * 近い順に表示し、行タップで詳細、ピン/ボタンで Google マップに飛ぶ。
  */
 var NB_LIST=[];   // いま画面に出している結果（絞り込み後）。data-nb の添字と対応
+var nbIntentTimer=null;   // ブランド語の変化 → 再検索のデバウンス
 /* 非同期コールバックが他のセクションを描き直さないようにするガード。
  * 検索中に別画面へ移った場合、そのままにしておけば戻ったとき render される。 */
 function nbUpd(){if(view==='nearby')render()}
@@ -1033,17 +1034,21 @@ function renderNearby(){
     if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd,qi.filters);
   },0);
   /* 同じカテゴリーでもブランド語が変わったら検索し直す（ローソン→セブン等）。
-   * ブランドはサーバー側で半径全域から探すので、手元の絞り込みでは代わりにならない */
+   * ブランドはサーバー側で半径全域から探すので、手元の絞り込みでは代わりにならない。
+   * タイマーはレンダーごとに引き直す（真のデバウンス）— 入力途中の語で
+   * 15km の全域検索が無駄に飛ばないよう、手が止まってから発火する */
   var wantSig=qi&&qi.cat===S.cat?(qi.filters||[]).join('|'):'';
   var haveSig=(S.filters||[]).join('|');
-  if(S.phase==='ok'&&(qi?qi.cat===S.cat:true)&&wantSig!==haveSig)
-    setTimeout(function(){
+  if(S.phase==='ok'&&(qi?qi.cat===S.cat:true)&&wantSig!==haveSig){
+    clearTimeout(nbIntentTimer);
+    nbIntentTimer=setTimeout(function(){
       var qi2=query?Nearby.queryIntent(queryRaw):null;
       var sig2=qi2&&qi2.cat===Nearby.state.cat?(qi2.filters||[]).join('|'):'';
       if(view==='nearby'&&Nearby.state.phase==='ok'&&
          sig2!==(Nearby.state.filters||[]).join('|'))
         Nearby.select(Nearby.state.cat,nbUpd,qi2&&qi2.cat===Nearby.state.cat?qi2.filters:null);
-    },250);
+    },450);
+  }
   var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
     return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
   }).join('')+'</div>';
@@ -1079,14 +1084,17 @@ function renderNearby(){
   }else if(S.phase==='ok'){
     NB_LIST=S.items.filter(function(it){
       if(!query)return true;
-      if(qi&&qi.cat===S.cat)
-        // カテゴリー語（コンビニ等）は絞らず全件、ブランド語（ファミマ等）は別名で絞る
-        return qi.filters?Nearby.itemMatches(it,qi.filters):true;
+      if(qi&&qi.cat===S.cat){
+        // サーバー側でブランド絞り込み済みなら二重に絞らない（operator や
+        // name:en だけで一致した店を手元で取りこぼさない）
+        if(qi.filters)return (S.filters&&S.filters.length)?true:Nearby.itemMatches(it,qi.filters);
+        return true;   // カテゴリー語（コンビニ等）は絞らず全件
+      }
       return Nearby.itemMatches(it,[queryRaw]);   // 表記ゆれに強い通常の絞り込み
     });
     h+='<div class="sechead"><span class="n">'+esc(cat?cat.n:'')+' · 近い順</span>'+
       '<span class="c">'+NB_LIST.length+' 件 · 半径 '+Nearby.fmtDist(S.radius)+
-      (S.expanded?'（自動拡大）':'')+'</span></div>';
+      (S.expanded?'（自動拡大）':'')+(S.partial?'（密集地のため一部）':'')+'</span></div>';
     if(NB_LIST.length){
       h+='<div class="list">'+NB_LIST.map(function(it,i){
         return '<div class="nbwrap"><button class="row nbrow" data-nb="'+i+'">'+

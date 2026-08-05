@@ -64,7 +64,7 @@ window.Nearby = (function () {
    * expanded: 0件に近く、半径を自動で広げて再検索した結果かどうか
    * errorDetail: ミラーごとの失敗理由（画面に小さく出して原因調査に使う） */
   var state = { phase: 'idle', cat: '', items: [], radius: 0, expanded: false,
-                filters: null, error: '', errorDetail: '', loc: null, locAt: 0 };
+                partial: false, filters: null, error: '', errorDetail: '', loc: null, locAt: 0 };
   var cache = {}, seq = 0, warming = false;
 
   function catByKey(k) {
@@ -274,7 +274,7 @@ window.Nearby = (function () {
     var la = el.lat != null ? el.lat : (el.center && el.center.lat);
     var lo = el.lon != null ? el.lon : (el.center && el.center.lon);
     if (la == null || lo == null) return null;
-    var name = t.name || t['name:ja'] || '';
+    var name = t.name || t['name:ja'] || t['name:en'] || '';
     var brand = t['brand:ja'] || t.brand || t.operator || '';
     // 名前もブランドも無い項目は情報にならないので出さない（トイレ等は除く）
     if (!name && !brand && !cat.noname) return null;
@@ -323,20 +323,29 @@ window.Nearby = (function () {
       }
       var items = toItems(els);
       /* 上限いっぱい返ってきたら打ち切りの可能性が高い（打ち切りは距離順ではない
-       * ため最寄りが欠けうる）。観測できた「40番目に近い場所」の距離まで絞れば
-       * 真の最寄り40件はその中に必ず収まるので、その半径で取り直す（最大3回・
-       * 下限500m）。密集地の縁（海沿い・公園際など）では絞ると逆に減ることが
-       * あるので、その場合は打ち切りありでも元の結果を残す。 */
-      if (els.length >= OUT_LIMIT && (shrunk || 0) < 3 && r > 600) {
+       * ため最寄りが欠けうる）。観測できた「40番目に近い場所」の距離（真の40番目の
+       * 上界）まで絞って取り直す。qt の偏りで観測40番目が遠いときは半分ずつ詰める
+       * （最大5回・下限500m）。それでも打ち切りが残る密集地では partial を立てて
+       * 画面に「一部のみ」と正直に出す。 */
+      if (els.length >= OUT_LIMIT && (shrunk || 0) < 5 && r > 600) {
         var est = items.length >= 40 ? Math.round(items[39].dist * 1.3) : Math.round(r / 2);
         var r2 = Math.max(500, Math.min(Math.round(r / 2), est));
         if (r2 < r) return runSearch(cat, loc, r2, expanded, (shrunk || 0) + 1, brandRe)
           .then(function (res2) {
             /* 絞った結果が実用件数（3件以上）ならそちらを採用する — 絞った半径内は
-             * 完全なので「近い順」が正確。ほぼ空振り（密集地の縁に立っている等）なら、
-             * 打ち切りの可能性ありでも元の結果を残す方が役に立つ。 */
-            return res2.items.length >= 3 ? res2
-                 : { items: items, radius: r, expanded: !!expanded };
+             * 完全なので「近い順」が正確。40件に足りない分は、最初の応答で観測できた
+             * 遠い側の項目で補う（絞る前に見えていた r2〜r の店を捨てない）。
+             * ほぼ空振り（密集地の縁に立っている等）なら元の結果を残す方が役に立つ。 */
+            if (res2.items.length >= 3) {
+              if (res2.items.length < 40) {
+                var far = items.filter(function (it) { return it.dist > res2.radius; });
+                if (far.length)
+                  return { items: res2.items.concat(far).slice(0, 40),
+                           radius: r, expanded: !!res2.expanded, partial: true };
+              }
+              return res2;
+            }
+            return { items: items, radius: r, expanded: !!expanded, partial: true };
           });
       }
       if (items.length < 3 && !expanded && !shrunk) {
@@ -347,7 +356,8 @@ window.Nearby = (function () {
                : { items: items, radius: r, expanded: false };
         });
       }
-      return { items: items, radius: r, expanded: !!expanded };
+      return { items: items, radius: r, expanded: !!expanded,
+               partial: els.length >= OUT_LIMIT };
     });
   }
 
@@ -369,7 +379,8 @@ window.Nearby = (function () {
       var ck = key + '|' + brandRe + '|' + loc.lat.toFixed(3) + ',' + loc.lng.toFixed(3);
       var c = cache[ck];
       if (c && Date.now() - c.at < 600000) {
-        state.items = c.items; state.radius = c.radius; state.expanded = c.expanded; state.phase = 'ok';
+        state.items = c.items; state.radius = c.radius; state.expanded = c.expanded;
+        state.partial = !!c.partial; state.phase = 'ok';
         if (onUpdate) onUpdate();
         return;
       }
@@ -377,8 +388,10 @@ window.Nearby = (function () {
       if (onUpdate) onUpdate();
       return runSearch(cat, loc, cat.r, false, 0, brandRe).then(function (res) {
         if (my !== seq) return;
-        cache[ck] = { items: res.items, radius: res.radius, expanded: res.expanded, at: Date.now() };
-        state.items = res.items; state.radius = res.radius; state.expanded = res.expanded; state.phase = 'ok';
+        cache[ck] = { items: res.items, radius: res.radius, expanded: res.expanded,
+                      partial: !!res.partial, at: Date.now() };
+        state.items = res.items; state.radius = res.radius; state.expanded = res.expanded;
+        state.partial = !!res.partial; state.phase = 'ok';
         if (onUpdate) onUpdate();
       });
     }).catch(function (e) {
@@ -499,10 +512,13 @@ window.Nearby = (function () {
   }
 
   /* 1件が検索語（正規化済みの候補リスト）に一致するか。名前・ブランド・種別・
-   * ジャンル・住所まで見る。 */
+   * ジャンル・住所に加え、サーバー側の照合対象（name:en・operator 等の生タグ）も
+   * 見る — サーバーが返した一致を手元で取りこぼさないため。 */
   function itemMatches(it, terms) {
+    var tg = it.tags || {};
     var hay = normQ([it.title, it.name, it.brand, it.sub, it.line2,
-                     addr(it.tags)].filter(Boolean).join(' '));
+                     tg['name:ja'], tg['name:en'], tg.brand, tg['brand:ja'], tg.operator,
+                     addr(tg)].filter(Boolean).join(' '));
     for (var i = 0; i < terms.length; i++) {
       var t = normQ(terms[i]);
       if (t && hay.indexOf(t) > -1) return true;
