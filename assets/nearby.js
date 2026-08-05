@@ -20,23 +20,25 @@ window.Nearby = (function () {
   var LS_MIRROR = 'lifehub.nbMirror';   // 直近で成功したミラー（次回はここから試す）
   /* サーバーに要求する最大件数。Overpass の件数制限は距離順ではなく ID/タイル順で
    * 打ち切られるため、少ないと「最寄りが欠ける」。大きめに取り、選別は手元で行う。 */
-  var OUT_LIMIT = 300;
+  var OUT_LIMIT = 400;
 
   /* カテゴリー定義。q は Overpass のタグフィルタ（node/way 両方に適用）。
-   * r は初期半径(m)。0件に近いときは自動で3倍(上限50km)に広げて1回だけ再検索する。
+   * r は初期半径(m)。基本は 15km — 郊外や車移動でも一発で見つかる広さ。
+   * 密集地では打ち切り検知が観測した最寄り40件の距離まで自動で絞り直すので、
+   * 広くても「最寄りが欠ける」ことはない。0件に近いときは3倍(上限50km)で再検索。
    * noname は無名でも載せる（トイレ・駐車場は名前が無いのが普通）。 */
   /* フィルタは正規表現ではなく完全一致の集合にする。Overpass はタグの完全一致に
    * インデックスが効くため、混雑したサーバーでも処理が速く queue 落ちしにくい。 */
   var CATS = [
-    { k: 'rest',  n: 'レストラン',       e: '🍽',  r: 1500,
+    { k: 'rest',  n: 'レストラン',       e: '🍽',  r: 15000,
       q: ['["amenity"="restaurant"]', '["amenity"="fast_food"]', '["amenity"="food_court"]'] },
-    { k: 'cafe',  n: 'カフェ',           e: '☕',  r: 1500,
+    { k: 'cafe',  n: 'カフェ',           e: '☕',  r: 15000,
       q: ['["amenity"="cafe"]', '["amenity"="ice_cream"]'] },
-    { k: 'conv',  n: 'コンビニ',         e: '🏪',  r: 1200,
+    { k: 'conv',  n: 'コンビニ',         e: '🏪',  r: 15000,
       q: ['["shop"="convenience"]'] },
-    { k: 'fuel',  n: 'ガソリンスタンド', e: '⛽',  r: 3000,
+    { k: 'fuel',  n: 'ガソリンスタンド', e: '⛽',  r: 15000,
       q: ['["amenity"="fuel"]'] },
-    { k: 'wc',    n: 'トイレ',           e: '🚻',  r: 1000, noname: 1,
+    { k: 'wc',    n: 'トイレ',           e: '🚻',  r: 15000, noname: 1,
       q: ['["amenity"="toilets"]'] },
     { k: 'eki',   n: '道の駅',           e: '🛣',  r: 20000,
       /* 道の駅は「name に道の駅」を正とし、SA/PA(highway=services/rest_area)も拾う。
@@ -44,17 +46,17 @@ window.Nearby = (function () {
        * 持つので、名前検索側からはそれらを丸ごと除外する（SA/PA は後ろの2つが拾う）。 */
       q: ['["name"~"道の駅"]["highway"!~"."]["public_transport"!~"."]',
           '["highway"="rest_area"]', '["highway"="services"]'] },
-    { k: 'super', n: 'スーパー',         e: '🛒',  r: 2000,
+    { k: 'super', n: 'スーパー',         e: '🛒',  r: 15000,
       q: ['["shop"="supermarket"]'] },
-    { k: 'drug',  n: 'ドラッグストア',   e: '💊',  r: 2000,
+    { k: 'drug',  n: 'ドラッグストア',   e: '💊',  r: 15000,
       q: ['["amenity"="pharmacy"]', '["shop"="chemist"]', '["shop"="drugstore"]'] },
-    { k: 'park',  n: '駐車場',           e: '🅿️', r: 1200, noname: 1,
+    { k: 'park',  n: '駐車場',           e: '🅿️', r: 15000, noname: 1,
       q: ['["amenity"="parking"]["access"!~"^(private|no)$"]'] },
-    { k: 'atm',   n: 'ATM・銀行',        e: '🏧',  r: 1500,
+    { k: 'atm',   n: 'ATM・銀行',        e: '🏧',  r: 15000,
       q: ['["amenity"="atm"]', '["amenity"="bank"]'] },
-    { k: 'hosp',  n: '病院',             e: '🏥',  r: 3000,
+    { k: 'hosp',  n: '病院',             e: '🏥',  r: 15000,
       q: ['["amenity"="hospital"]', '["amenity"="clinic"]', '["amenity"="doctors"]'] },
-    { k: 'bath',  n: '温泉・銭湯',       e: '♨️', r: 10000,
+    { k: 'bath',  n: '温泉・銭湯',       e: '♨️', r: 15000,
       q: ['["amenity"="public_bath"]'] }
   ];
 
@@ -62,7 +64,7 @@ window.Nearby = (function () {
    * expanded: 0件に近く、半径を自動で広げて再検索した結果かどうか
    * errorDetail: ミラーごとの失敗理由（画面に小さく出して原因調査に使う） */
   var state = { phase: 'idle', cat: '', items: [], radius: 0, expanded: false,
-                error: '', errorDetail: '', loc: null, locAt: 0 };
+                partial: false, filters: null, error: '', errorDetail: '', loc: null, locAt: 0 };
   var cache = {}, seq = 0, warming = false;
 
   function catByKey(k) {
@@ -181,12 +183,25 @@ window.Nearby = (function () {
       fire();
     });
   }
-  function buildQuery(cat, loc, r) {
+  /* ブランド語（ローソン・セブン等）を Overpass の正規表現に変換する。
+   * 手元の絞り込みだけだと「最寄り40件の中に無い」ブランドを見つけられないため、
+   * サーバー側で名前・ブランド・運営タグに条件を掛け、半径全域から直接探す。 */
+  function brandRegex(filters) {
+    if (!filters || !filters.length) return '';
+    return filters.map(function (f) {
+      return String(f).replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
+    }).filter(Boolean).join('|');
+  }
+  function buildQuery(cat, loc, r, brandRe) {
     var ll = r + ',' + loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5);
+    /* name 系・brand 系・operator のどれかにブランド語が入っていれば拾う */
+    var bf = brandRe
+      ? '[~"^(name|name:ja|name:en|brand|brand:ja|operator)$"~"' + brandRe + '",i]'
+      : '';
     /* nwr で node / way / relation を全部拾う（道の駅・病院・モールは
      * relation で描かれていることがある）。out center が代表点を返す。 */
     var lines = cat.q.map(function (f) {
-      return 'nwr' + f + '(around:' + ll + ');';
+      return 'nwr' + f + bf + '(around:' + ll + ');';
     }).join('');
     /* timeout はサーバー側のキュー待ちを見込んで長めにする（混雑時対策）。
      * qt はタイル順ソート（ID 順より軽い）。上限は「打ち切りをほぼ起こさない」
@@ -259,7 +274,7 @@ window.Nearby = (function () {
     var la = el.lat != null ? el.lat : (el.center && el.center.lat);
     var lo = el.lon != null ? el.lon : (el.center && el.center.lon);
     if (la == null || lo == null) return null;
-    var name = t.name || t['name:ja'] || '';
+    var name = t.name || t['name:ja'] || t['name:en'] || '';
     var brand = t['brand:ja'] || t.brand || t.operator || '';
     // 名前もブランドも無い項目は情報にならないので出さない（トイレ等は除く）
     if (!name && !brand && !cat.noname) return null;
@@ -298,8 +313,8 @@ window.Nearby = (function () {
   }
 
   // ---- 検索本体 -----------------------------------------------------------
-  function runSearch(cat, loc, r, expanded, shrunk) {
-    return overpass(buildQuery(cat, loc, r)).then(function (j) {
+  function runSearch(cat, loc, r, expanded, shrunk, brandRe) {
+    return overpass(buildQuery(cat, loc, r, brandRe)).then(function (j) {
       var els = j.elements || [];
       function toItems(arr) {
         return dedupe(arr.map(function (el) { return normalize(el, cat, loc); })
@@ -308,55 +323,75 @@ window.Nearby = (function () {
       }
       var items = toItems(els);
       /* 上限いっぱい返ってきたら打ち切りの可能性が高い（打ち切りは距離順ではない
-       * ため最寄りが欠けうる）。半径を半分に絞って取り直す（最大2回・下限500m）。
-       * 密集地の縁（海沿い・公園際など）では絞ると逆に減ることがあるので、
-       * その場合は打ち切りありでも元の結果を残す。拡大後の打ち切りにも適用する。 */
-      if (els.length >= OUT_LIMIT && (shrunk || 0) < 2 && r >= 1000) {
-        return runSearch(cat, loc, Math.round(r / 2), expanded, (shrunk || 0) + 1)
+       * ため最寄りが欠けうる）。観測できた「40番目に近い場所」の距離（真の40番目の
+       * 上界）まで絞って取り直す。qt の偏りで観測40番目が遠いときは半分ずつ詰める
+       * （最大5回・下限500m）。それでも打ち切りが残る密集地では partial を立てて
+       * 画面に「一部のみ」と正直に出す。 */
+      if (els.length >= OUT_LIMIT && (shrunk || 0) < 5 && r > 600) {
+        var est = items.length >= 40 ? Math.round(items[39].dist * 1.3) : Math.round(r / 2);
+        var r2 = Math.max(500, Math.min(Math.round(r / 2), est));
+        if (r2 < r) return runSearch(cat, loc, r2, expanded, (shrunk || 0) + 1, brandRe)
           .then(function (res2) {
             /* 絞った結果が実用件数（3件以上）ならそちらを採用する — 絞った半径内は
-             * 完全なので「近い順」が正確。ほぼ空振り（密集地の縁に立っている等）なら、
-             * 打ち切りの可能性ありでも元の結果を残す方が役に立つ。 */
-            return res2.items.length >= 3 ? res2
-                 : { items: items, radius: r, expanded: !!expanded };
+             * 完全なので「近い順」が正確。40件に足りない分は、最初の応答で観測できた
+             * 遠い側の項目で補う（絞る前に見えていた r2〜r の店を捨てない）。
+             * ほぼ空振り（密集地の縁に立っている等）なら元の結果を残す方が役に立つ。 */
+            if (res2.items.length >= 3) {
+              if (res2.items.length < 40) {
+                var far = items.filter(function (it) { return it.dist > res2.radius; });
+                if (far.length)
+                  return { items: res2.items.concat(far).slice(0, 40),
+                           radius: r, expanded: !!res2.expanded, partial: true };
+              }
+              return res2;
+            }
+            return { items: items, radius: r, expanded: !!expanded, partial: true };
           });
       }
       if (items.length < 3 && !expanded && !shrunk) {
-        var r2 = Math.min(r * 3, 50000);
-        if (r2 > r) return runSearch(cat, loc, r2, true, 0).then(function (res2) {
+        var r2x = Math.min(r * 3, 50000);
+        if (r2x > r) return runSearch(cat, loc, r2x, true, 0, brandRe).then(function (res2) {
           /* 半径を広げたのに減った（サーバー側の揺らぎ等）なら元の結果を残す */
           return res2.items.length > items.length ? res2
                : { items: items, radius: r, expanded: false };
         });
       }
-      return { items: items, radius: r, expanded: !!expanded };
+      return { items: items, radius: r, expanded: !!expanded,
+               partial: els.length >= OUT_LIMIT };
     });
   }
 
-  /* カテゴリーをワンタップ → 現在地取得 → 検索。onUpdate は状態が変わるたびに呼ぶ。 */
-  function select(key, onUpdate) {
+  /* カテゴリーをワンタップ → 現在地取得 → 検索。onUpdate は状態が変わるたびに呼ぶ。
+   * filters（ブランド語の配列）を渡すと、Overpass クエリに名前/ブランド条件を
+   * 入れて半径全域からそのブランドだけを直接探す。 */
+  function select(key, onUpdate, filters) {
     var cat = catByKey(key);
     if (!cat) return;
     var my = ++seq;
     state.cat = key;
+    state.filters = (filters && filters.length) ? filters.slice() : null;
     state.error = ''; state.errorDetail = '';
     state.phase = (state.loc && Date.now() - state.locAt < 120000) ? 'loading' : 'locating';
     if (onUpdate) onUpdate();
+    var brandRe = brandRegex(state.filters);
     getLoc(false).then(function (loc) {
       if (my !== seq) return;
-      var ck = key + '|' + loc.lat.toFixed(3) + ',' + loc.lng.toFixed(3);
+      var ck = key + '|' + brandRe + '|' + loc.lat.toFixed(3) + ',' + loc.lng.toFixed(3);
       var c = cache[ck];
       if (c && Date.now() - c.at < 600000) {
-        state.items = c.items; state.radius = c.radius; state.expanded = c.expanded; state.phase = 'ok';
+        state.items = c.items; state.radius = c.radius; state.expanded = c.expanded;
+        state.partial = !!c.partial; state.phase = 'ok';
         if (onUpdate) onUpdate();
         return;
       }
       state.phase = 'loading';
       if (onUpdate) onUpdate();
-      return runSearch(cat, loc, cat.r, false, 0).then(function (res) {
+      return runSearch(cat, loc, cat.r, false, 0, brandRe).then(function (res) {
         if (my !== seq) return;
-        cache[ck] = { items: res.items, radius: res.radius, expanded: res.expanded, at: Date.now() };
-        state.items = res.items; state.radius = res.radius; state.expanded = res.expanded; state.phase = 'ok';
+        cache[ck] = { items: res.items, radius: res.radius, expanded: res.expanded,
+                      partial: !!res.partial, at: Date.now() };
+        state.items = res.items; state.radius = res.radius; state.expanded = res.expanded;
+        state.partial = !!res.partial; state.phase = 'ok';
         if (onUpdate) onUpdate();
       });
     }).catch(function (e) {
@@ -376,7 +411,7 @@ window.Nearby = (function () {
     if (onUpdate) onUpdate();
     getLoc(true).then(function () {
       if (my !== seq) return;
-      if (state.cat) select(state.cat, onUpdate);
+      if (state.cat) select(state.cat, onUpdate, state.filters);
       else { state.phase = 'idle'; if (onUpdate) onUpdate(); }
     }).catch(function (e) {
       if (my !== seq) return;
@@ -388,7 +423,7 @@ window.Nearby = (function () {
   }
 
   function retry(onUpdate) {
-    if (state.cat) select(state.cat, onUpdate);
+    if (state.cat) select(state.cat, onUpdate, state.filters);
     else { state.phase = 'idle'; if (onUpdate) onUpdate(); }
   }
 
@@ -408,12 +443,15 @@ window.Nearby = (function () {
    * f: ブランド語（カテゴリー検索へ誘導した上で、この別名で結果を絞り込む） */
   var QUERY_MAP = [
     { cat: 'conv', t: ['コンビニ', 'コンビニエンスストア'] },
-    { cat: 'conv', t: ['セブン', 'セブンイレブン', '7イレブン', '711'], f: ['セブン', '7eleven', 'seveneleven'] },
-    { cat: 'conv', t: ['ファミマ', 'ファミリーマート'], f: ['ファミリーマート', 'familymart'] },
+    { cat: 'conv', t: ['セブン', 'セブンイレブン', '7イレブン', '711'],
+      f: ['セブン', '7eleven', 'seveneleven', '7-eleven', 'seven-eleven', 'seven eleven'] },
+    { cat: 'conv', t: ['ファミマ', 'ファミリーマート'], f: ['ファミリーマート', 'familymart', 'family mart'] },
     { cat: 'conv', t: ['ローソン'], f: ['ローソン', 'lawson'] },
     { cat: 'conv', t: ['ミニストップ'], f: ['ミニストップ', 'ministop'] },
     { cat: 'conv', t: ['セイコーマート', 'セコマ'], f: ['セイコーマート', 'seicomart'] },
     { cat: 'conv', t: ['デイリーヤマザキ'], f: ['デイリーヤマザキ', 'ヤマザキ'] },
+    { cat: 'conv', t: ['ニューデイズ'], f: ['ニューデイズ', 'newdays'] },
+    { cat: 'conv', t: ['ポプラ'], f: ['ポプラ', 'poplar'] },
     { cat: 'rest', t: ['レストラン', 'ごはん', 'ご飯', '食事', 'ランチ', 'ディナー', '定食', '食堂', 'ファミレス', 'ファストフード'] },
     { cat: 'rest', t: ['マック', 'マクドナルド'], f: ['マクドナルド', 'mcdonald'] },
     { cat: 'rest', t: ['ケンタ', 'ケンタッキー'], f: ['ケンタッキー', 'kfc'] },
@@ -474,10 +512,13 @@ window.Nearby = (function () {
   }
 
   /* 1件が検索語（正規化済みの候補リスト）に一致するか。名前・ブランド・種別・
-   * ジャンル・住所まで見る。 */
+   * ジャンル・住所に加え、サーバー側の照合対象（name:en・operator 等の生タグ）も
+   * 見る — サーバーが返した一致を手元で取りこぼさないため。 */
   function itemMatches(it, terms) {
+    var tg = it.tags || {};
     var hay = normQ([it.title, it.name, it.brand, it.sub, it.line2,
-                     addr(it.tags)].filter(Boolean).join(' '));
+                     tg['name:ja'], tg['name:en'], tg.brand, tg['brand:ja'], tg.operator,
+                     addr(tg)].filter(Boolean).join(' '));
     for (var i = 0; i < terms.length; i++) {
       var t = normQ(terms[i]);
       if (t && hay.indexOf(t) > -1) return true;
@@ -573,7 +614,7 @@ window.Nearby = (function () {
     select: select, relocate: relocate, retry: retry, warm: warm,
     fmtDist: fmtDist, gmaps: gmaps, gmapsDir: gmapsDir,
     addr: addr, hoursJa: hoursJa, cuisineJa: cuisineJa,
-    queryIntent: queryIntent, itemMatches: itemMatches,
+    queryIntent: queryIntent, itemMatches: itemMatches, brandRegex: brandRegex,
     hasGoogleKey: hasGoogleKey, setGoogleKey: setGoogleKey, googlePlace: googlePlace
   };
 })();

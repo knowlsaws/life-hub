@@ -320,6 +320,19 @@ function scheduleStateSave(delay){
   clearTimeout(stateTimer);
   stateTimer=setTimeout(saveState,delay);
 }
+/* mail.json は当日の処理分だけになったので、もう一覧に無いメールの read 記録は
+ * 使われない。放っておくと state.json が日次で単調に太り続ける（いずれ
+ * Contents API の 1MB 上限で同期自体が壊れる）ため、同期のたびに間引く。 */
+function pruneMailState(){
+  if(DEMO_MODE)return;
+  var present={};
+  D.forEach(function(x){if(x.s==='mail')present[stateKey(x)]=1});
+  Object.keys(STATE).forEach(function(k){
+    if(k.indexOf('mail-')!==0)return;
+    if(present[k]||PENDING[k]||TOUCHED[k])return;
+    delete STATE[k];
+  });
+}
 /* 未保存の編集(PENDING)を state.json に書き出す。ページ離脱時にも呼ぶ。
  * 失敗時は編集を握ったままバックオフで再試行し、勝手に諦めない。 */
 function saveState(){
@@ -329,8 +342,16 @@ function saveState(){
   if(!writing.length)return;
   var snap={};writing.forEach(function(k){snap[k]=JSON.stringify(STATE[k])});
   stateSaving=true;
-  GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
-             'state: ユーザー編集を保存 [skip ci]')
+  /* state.json は全量で書くため、そのままだと別端末が書いたキーを丸ごと
+   * 消してしまう。書く直前に現物を取り込み直してから保存する
+   * （自端末で触ったキーは mergeRemoteState の規則どおりローカル優先）。 */
+  GH.getJSON('.web/state.json').catch(function(){return null}).then(function(remote){
+    STATE=mergeRemoteState(remote);
+    pruneMailState();
+    persistLocal();
+    return GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
+                      'state: ユーザー編集を保存 [skip ci]');
+  })
     .then(function(){
       stateSaving=false;stateFails=0;
       // 保存中に再編集されていないキーだけ確定（PENDING から外す）
@@ -654,7 +675,9 @@ function renderMail(){
   }),'mail');
   var unread=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var act='<div class="segs"><button class="seg '+(mailRead?'':'on')+'" data-mail="0">未読のみ '+unread+'</button>'+
-    '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>';
+    '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>'+
+    '<div class="actbar"><button class="act" data-mailall="read">すべて既読にする</button>'+
+    '<button class="act" data-mailall="unread">すべて未読に戻す</button></div>';
   var h='<div class="list">'+(items.length?items.map(function(x){return rowHTML(x,D.indexOf(x))}).join(''):'')+'</div>';
   if(!items.length)h+='<div class="empty">該当するメールはありません</div>';
   return {act:act,body:h};
@@ -995,6 +1018,7 @@ function renderMoney(){
  * 近い順に表示し、行タップで詳細、ピン/ボタンで Google マップに飛ぶ。
  */
 var NB_LIST=[];   // いま画面に出している結果（絞り込み後）。data-nb の添字と対応
+var nbIntentTimer=null;   // ブランド語の変化 → 再検索のデバウンス
 /* 非同期コールバックが他のセクションを描き直さないようにするガード。
  * 検索中に別画面へ移った場合、そのままにしておけば戻ったとき render される。 */
 function nbUpd(){if(view==='nearby')render()}
@@ -1007,8 +1031,24 @@ function renderNearby(){
   var qi=query?Nearby.queryIntent(queryRaw):null;
   // 未検索の状態で語を打ったら、推定したカテゴリーをそのまま検索する
   if(qi&&S.phase==='idle')setTimeout(function(){
-    if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd);
+    if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd,qi.filters);
   },0);
+  /* 同じカテゴリーでもブランド語が変わったら検索し直す（ローソン→セブン等）。
+   * ブランドはサーバー側で半径全域から探すので、手元の絞り込みでは代わりにならない。
+   * タイマーはレンダーごとに引き直す（真のデバウンス）— 入力途中の語で
+   * 15km の全域検索が無駄に飛ばないよう、手が止まってから発火する */
+  var wantSig=qi&&qi.cat===S.cat?(qi.filters||[]).join('|'):'';
+  var haveSig=(S.filters||[]).join('|');
+  if(S.phase==='ok'&&(qi?qi.cat===S.cat:true)&&wantSig!==haveSig){
+    clearTimeout(nbIntentTimer);
+    nbIntentTimer=setTimeout(function(){
+      var qi2=query?Nearby.queryIntent(queryRaw):null;
+      var sig2=qi2&&qi2.cat===Nearby.state.cat?(qi2.filters||[]).join('|'):'';
+      if(view==='nearby'&&Nearby.state.phase==='ok'&&
+         sig2!==(Nearby.state.filters||[]).join('|'))
+        Nearby.select(Nearby.state.cat,nbUpd,qi2&&qi2.cat===Nearby.state.cat?qi2.filters:null);
+    },450);
+  }
   var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
     return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
   }).join('')+'</div>';
@@ -1044,14 +1084,17 @@ function renderNearby(){
   }else if(S.phase==='ok'){
     NB_LIST=S.items.filter(function(it){
       if(!query)return true;
-      if(qi&&qi.cat===S.cat)
-        // カテゴリー語（コンビニ等）は絞らず全件、ブランド語（ファミマ等）は別名で絞る
-        return qi.filters?Nearby.itemMatches(it,qi.filters):true;
+      if(qi&&qi.cat===S.cat){
+        // サーバー側でブランド絞り込み済みなら二重に絞らない（operator や
+        // name:en だけで一致した店を手元で取りこぼさない）
+        if(qi.filters)return (S.filters&&S.filters.length)?true:Nearby.itemMatches(it,qi.filters);
+        return true;   // カテゴリー語（コンビニ等）は絞らず全件
+      }
       return Nearby.itemMatches(it,[queryRaw]);   // 表記ゆれに強い通常の絞り込み
     });
     h+='<div class="sechead"><span class="n">'+esc(cat?cat.n:'')+' · 近い順</span>'+
       '<span class="c">'+NB_LIST.length+' 件 · 半径 '+Nearby.fmtDist(S.radius)+
-      (S.expanded?'（自動拡大）':'')+'</span></div>';
+      (S.expanded?'（自動拡大）':'')+(S.partial?'（密集地のため一部）':'')+'</span></div>';
     if(NB_LIST.length){
       h+='<div class="list">'+NB_LIST.map(function(it,i){
         return '<div class="nbwrap"><button class="row nbrow" data-nb="'+i+'">'+
@@ -1221,7 +1264,11 @@ function resolveMailEv(mailItem,l){
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
-  if(x.s==='mail'){if(x.unread)sessionRead[stateKey(x)]=1;x.unread=0}
+  if(x.s==='mail'){
+    // 既読の永続化を nw に頼らない（一括未読の後など nw=0 でも読了は保存する）
+    if(x.unread){sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
+    x.unread=0;
+  }
   if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';dEdit.style.display='none';dDone.style.display='none';
@@ -1786,6 +1833,25 @@ function bind(){
       mailRead=el.getAttribute('data-mail')==='1';
       if(mailRead)sessionRead={};
       render()}});
+    // メールの一括既読/未読。既読は state.json の read:1 として永続化し、
+    // 未読に戻すは read を打ち消してパイプライン由来の未読フラグを復活させる
+    root.querySelectorAll('[data-mailall]').forEach(function(el){el.onclick=function(){
+      var toRead=el.getAttribute('data-mailall')==='read';
+      D.forEach(function(x){
+        if(x.s!=='mail'||!match(x))return;   // 検索で絞っている間は表示範囲だけ
+        if(toRead){
+          if(x.unread||x.nw){x.unread=0;x.nw=0;sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
+        }else{
+          // 新着ドットも戻し（リロード後と同じ見た目）、リモートにしか無い
+          // 既読も打ち消せるよう、全件に read:0 を書く
+          x.unread=1;x.nw=1;
+          touchState(x,{read:0});
+        }
+      });
+      if(!toRead)sessionRead={};
+      setSync(toRead?'すべて既読にしました':'すべて未読に戻しました',true);
+      render();
+    }});
     root.querySelectorAll('[data-form]').forEach(function(el){el.onclick=function(){
       var kind=el.getAttribute('data-form');
       // 予定一覧の上部から作った場合は当日を初期値にする
@@ -1801,7 +1867,10 @@ function bind(){
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
     root.querySelectorAll('[data-nbcat]').forEach(function(el){el.onclick=function(){
-      Nearby.select(el.getAttribute('data-nbcat'),nbUpd)}});
+      var k=el.getAttribute('data-nbcat');
+      // 検索語がそのカテゴリーのブランド語なら、ブランド条件付きで検索する
+      var qi=view==='nearby'&&query?Nearby.queryIntent(queryRaw):null;
+      Nearby.select(k,nbUpd,qi&&qi.cat===k?qi.filters:null)}});
     root.querySelectorAll('[data-nb]').forEach(function(el){el.onclick=function(){
       var it=NB_LIST[+el.getAttribute('data-nb')];if(it)openNearbySpot(it)}});
     root.querySelectorAll('[data-nbact]').forEach(function(el){el.onclick=function(){
@@ -2091,7 +2160,9 @@ function loadAll(){
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
-    STATE=mergeRemoteState(res[1]);persistLocal();
+    STATE=mergeRemoteState(res[1]);
+    pruneMailState();
+    persistLocal();
     reconcileEssentials();
     reconcileNewsStops(newsOk);
     TERMS=res[2]||{};buildTermRe();
