@@ -1009,8 +1009,20 @@ function renderNearby(){
   var qi=query?Nearby.queryIntent(queryRaw):null;
   // 未検索の状態で語を打ったら、推定したカテゴリーをそのまま検索する
   if(qi&&S.phase==='idle')setTimeout(function(){
-    if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd);
+    if(view==='nearby'&&Nearby.state.phase==='idle')Nearby.select(qi.cat,nbUpd,qi.filters);
   },0);
+  /* 同じカテゴリーでもブランド語が変わったら検索し直す（ローソン→セブン等）。
+   * ブランドはサーバー側で半径全域から探すので、手元の絞り込みでは代わりにならない */
+  var wantSig=qi&&qi.cat===S.cat?(qi.filters||[]).join('|'):'';
+  var haveSig=(S.filters||[]).join('|');
+  if(S.phase==='ok'&&(qi?qi.cat===S.cat:true)&&wantSig!==haveSig)
+    setTimeout(function(){
+      var qi2=query?Nearby.queryIntent(queryRaw):null;
+      var sig2=qi2&&qi2.cat===Nearby.state.cat?(qi2.filters||[]).join('|'):'';
+      if(view==='nearby'&&Nearby.state.phase==='ok'&&
+         sig2!==(Nearby.state.filters||[]).join('|'))
+        Nearby.select(Nearby.state.cat,nbUpd,qi2&&qi2.cat===Nearby.state.cat?qi2.filters:null);
+    },250);
   var act='<div class="nbcats">'+Nearby.CATS.map(function(c){
     return '<button class="seg'+(S.cat===c.k?' on':'')+'" data-nbcat="'+c.k+'">'+c.e+' '+esc(c.n)+'</button>';
   }).join('')+'</div>';
@@ -1821,7 +1833,10 @@ function bind(){
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
     root.querySelectorAll('[data-nbcat]').forEach(function(el){el.onclick=function(){
-      Nearby.select(el.getAttribute('data-nbcat'),nbUpd)}});
+      var k=el.getAttribute('data-nbcat');
+      // 検索語がそのカテゴリーのブランド語なら、ブランド条件付きで検索する
+      var qi=view==='nearby'&&query?Nearby.queryIntent(queryRaw):null;
+      Nearby.select(k,nbUpd,qi&&qi.cat===k?qi.filters:null)}});
     root.querySelectorAll('[data-nb]').forEach(function(el){el.onclick=function(){
       var it=NB_LIST[+el.getAttribute('data-nb')];if(it)openNearbySpot(it)}});
     root.querySelectorAll('[data-nbact]').forEach(function(el){el.onclick=function(){
