@@ -654,7 +654,9 @@ function renderMail(){
   }),'mail');
   var unread=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
   var act='<div class="segs"><button class="seg '+(mailRead?'':'on')+'" data-mail="0">未読のみ '+unread+'</button>'+
-    '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>';
+    '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>'+
+    '<div class="actbar"><button class="act" data-mailall="read">すべて既読にする</button>'+
+    '<button class="act" data-mailall="unread">すべて未読に戻す</button></div>';
   var h='<div class="list">'+(items.length?items.map(function(x){return rowHTML(x,D.indexOf(x))}).join(''):'')+'</div>';
   if(!items.length)h+='<div class="empty">該当するメールはありません</div>';
   return {act:act,body:h};
@@ -1786,6 +1788,24 @@ function bind(){
       mailRead=el.getAttribute('data-mail')==='1';
       if(mailRead)sessionRead={};
       render()}});
+    // メールの一括既読/未読。既読は state.json の read:1 として永続化し、
+    // 未読に戻すは read を打ち消してパイプライン由来の未読フラグを復活させる
+    root.querySelectorAll('[data-mailall]').forEach(function(el){el.onclick=function(){
+      var toRead=el.getAttribute('data-mailall')==='read';
+      D.forEach(function(x){
+        if(x.s!=='mail')return;
+        if(toRead){
+          if(x.unread||x.nw){x.unread=0;x.nw=0;sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
+        }else{
+          x.unread=1;
+          var st=STATE[stateKey(x)];
+          if(st&&st.read)touchState(x,{read:0});
+        }
+      });
+      if(!toRead)sessionRead={};
+      setSync(toRead?'すべて既読にしました':'すべて未読に戻しました',true);
+      render();
+    }});
     root.querySelectorAll('[data-form]').forEach(function(el){el.onclick=function(){
       var kind=el.getAttribute('data-form');
       // 予定一覧の上部から作った場合は当日を初期値にする
