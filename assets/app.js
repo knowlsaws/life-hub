@@ -320,6 +320,19 @@ function scheduleStateSave(delay){
   clearTimeout(stateTimer);
   stateTimer=setTimeout(saveState,delay);
 }
+/* mail.json は当日の処理分だけになったので、もう一覧に無いメールの read 記録は
+ * 使われない。放っておくと state.json が日次で単調に太り続ける（いずれ
+ * Contents API の 1MB 上限で同期自体が壊れる）ため、同期のたびに間引く。 */
+function pruneMailState(){
+  if(DEMO_MODE)return;
+  var present={};
+  D.forEach(function(x){if(x.s==='mail')present[stateKey(x)]=1});
+  Object.keys(STATE).forEach(function(k){
+    if(k.indexOf('mail-')!==0)return;
+    if(present[k]||PENDING[k]||TOUCHED[k])return;
+    delete STATE[k];
+  });
+}
 /* 未保存の編集(PENDING)を state.json に書き出す。ページ離脱時にも呼ぶ。
  * 失敗時は編集を握ったままバックオフで再試行し、勝手に諦めない。 */
 function saveState(){
@@ -329,8 +342,16 @@ function saveState(){
   if(!writing.length)return;
   var snap={};writing.forEach(function(k){snap[k]=JSON.stringify(STATE[k])});
   stateSaving=true;
-  GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
-             'state: ユーザー編集を保存 [skip ci]')
+  /* state.json は全量で書くため、そのままだと別端末が書いたキーを丸ごと
+   * 消してしまう。書く直前に現物を取り込み直してから保存する
+   * （自端末で触ったキーは mergeRemoteState の規則どおりローカル優先）。 */
+  GH.getJSON('.web/state.json').catch(function(){return null}).then(function(remote){
+    STATE=mergeRemoteState(remote);
+    pruneMailState();
+    persistLocal();
+    return GH.putFile('.web/state.json',JSON.stringify(STATE,null,1)+'\n',
+                      'state: ユーザー編集を保存 [skip ci]');
+  })
     .then(function(){
       stateSaving=false;stateFails=0;
       // 保存中に再編集されていないキーだけ確定（PENDING から外す）
@@ -1235,7 +1256,11 @@ function resolveMailEv(mailItem,l){
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
-  if(x.s==='mail'){if(x.unread)sessionRead[stateKey(x)]=1;x.unread=0}
+  if(x.s==='mail'){
+    // 既読の永続化を nw に頼らない（一括未読の後など nw=0 でも読了は保存する）
+    if(x.unread){sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
+    x.unread=0;
+  }
   if(x.nw){x.nw=0;touchState(x,{read:1})}
   dSec.textContent=sn(x.s);
   dTrash.style.display='none';dEdit.style.display='none';dDone.style.display='none';
@@ -1805,13 +1830,14 @@ function bind(){
     root.querySelectorAll('[data-mailall]').forEach(function(el){el.onclick=function(){
       var toRead=el.getAttribute('data-mailall')==='read';
       D.forEach(function(x){
-        if(x.s!=='mail')return;
+        if(x.s!=='mail'||!match(x))return;   // 検索で絞っている間は表示範囲だけ
         if(toRead){
           if(x.unread||x.nw){x.unread=0;x.nw=0;sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
         }else{
-          x.unread=1;
-          var st=STATE[stateKey(x)];
-          if(st&&st.read)touchState(x,{read:0});
+          // 新着ドットも戻し（リロード後と同じ見た目）、リモートにしか無い
+          // 既読も打ち消せるよう、全件に read:0 を書く
+          x.unread=1;x.nw=1;
+          touchState(x,{read:0});
         }
       });
       if(!toRead)sessionRead={};
@@ -2126,7 +2152,9 @@ function loadAll(){
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
-    STATE=mergeRemoteState(res[1]);persistLocal();
+    STATE=mergeRemoteState(res[1]);
+    pruneMailState();
+    persistLocal();
     reconcileEssentials();
     reconcileNewsStops(newsOk);
     TERMS=res[2]||{};buildTermRe();
