@@ -1416,7 +1416,7 @@ function showDetail(i){
   }
   // 横長のイメージ写真（ファッションのコーデ・商品・動画サムネ）。
   // 外部画像なので、読めなければ枠ごと消して隙間を残さない
-  if(httpsOnly(d.hero))h+='<div class="hero"><img src="'+esc(d.hero)+'" alt="" loading="lazy" '+
+  if(httpsOnly(d.hero))h+='<div class="photo"><img src="'+esc(d.hero)+'" alt="" loading="lazy" '+
     'referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>';
   if(x.tags)h+='<div class="chips">'+x.tags.map(function(t){return '<span class="tag n" data-tag="'+esc(t)+'">'+esc(t)+'</span>'}).join('')+'</div>';
   if(x.s==='mail')h+='<div class="actbar"><button class="act" data-form="task">'+ic('plus')+'タスクを登録</button>'+
@@ -2386,6 +2386,29 @@ setInterval(sync,3000);
  * デバウンス待ちのまま閉じても編集が消えないようにする。 */
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='hidden')saveState();
+});
+/* PC・iPad（キーボード付き）向けの操作。スマホの操作は今までどおり。
+ *   Esc … 開いているシート／詳細／メニューを1段閉じる
+ *   /   … 検索欄へ移動（入力中は素通し）
+ * 入力中の Esc はフォーカスを外すだけにして、書きかけを消さない。 */
+document.addEventListener('keydown',function(e){
+  var t=e.target||{},tag=(t.tagName||'').toLowerCase();
+  var typing=tag==='input'||tag==='select'||tag==='textarea'||t.isContentEditable;
+  if(e.key==='Escape'){
+    /* 検索欄の Esc はブラウザ自身が中身を消す（input type=search の標準動作）。
+     * 黙って消えると一覧の絞り込みだけ残ってしまうので、こちらでも消して
+     * 画面を描き直す。 */
+    if(t===q){q.value='';q.dispatchEvent(new Event('input'));q.blur();return}
+    if(typing){t.blur();return}   // 入力中の書きかけは消さない
+    if(mask.classList.contains('show')){mask.classList.remove('show');return}
+    if(app.classList.contains('open')){closeD();return}
+    if(det.classList.contains('show')){histBack();return}
+    if(query){q.value='';q.dispatchEvent(new Event('input'));}
+    return;
+  }
+  if(e.key==='/'&&!typing&&!e.metaKey&&!e.ctrlKey&&!mask.classList.contains('show')){
+    e.preventDefault();q.focus();q.select();
+  }
 });
 window.addEventListener('pagehide',function(){saveState()});
 })();
