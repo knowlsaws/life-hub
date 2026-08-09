@@ -9,6 +9,7 @@ var ICON={
  essentials:'<path d="M6 8h12l1 12H5L6 8z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/>',
  supra:'<path d="M3 15v-2.5L5.5 8H15l4 4.5h2V15"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4M3 15h2.7M18.3 15H21"/>',
  money:'<circle cx="12" cy="12" r="9"/><path d="M8.5 7.5 12 12l3.5-4.5M12 12v5M9.5 13.5h5M9.5 15.8h5"/>',
+ fashion:'<path d="M9 3.5 12 6l3-2.5 5 2.6-1.8 4.2-1.7-.7V20H7.5v-10.4l-1.7.7L4 6.1z"/>',
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
@@ -34,7 +35,8 @@ function fD(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate(
 function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
-  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},
+  {k:'fashion',n:'ファッション'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -533,6 +535,7 @@ function render(){
   else if(view==='search')r=renderSearch();
   else if(view==='essentials')r=renderEssentials();
   else if(view==='supra')r=renderSupra();
+  else if(view==='fashion')r=renderFashion();
   else if(view==='money')r=renderMoney();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
@@ -613,6 +616,14 @@ function renderHome(){
         .sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
       return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+esc(nx2.t):'')):'未登録',
               MONEY.balance?('貯金 '+fmtYen(MONEY.balance.amount)):'—'];
+    }
+    if(k==='fashion'){
+      var fb=xs.filter(function(x){return x.kind==='brief'})
+        .sort(function(a,b){return String(a.time)>String(b.time)?-1:1})[0];
+      var ft=xs.filter(function(x){return x.kind==='trend'}).length;
+      var fi=xs.filter(function(x){return x.kind==='item'}).length;
+      return [xs.length?(fb?esc(fb.m):'トレンド '+ft+' 件'):'未取得',
+              xs.length?('トレンド '+ft+' · アイテム '+fi):(upd||'—')];
     }
     if(k==='supra'){
       var pr=xs.filter(function(x){return x.id==='supra-price'})[0];
@@ -930,6 +941,74 @@ function renderSupra(){
     :'<div class="empty">直近のニュースはありません</div>';
   // 早見表
   if(spec)h+='<div class="list" style="margin-top:12px">'+rowHTML(spec,D.indexOf(spec))+'</div>';
+  return {act:'',body:h};
+}
+
+/* ---- ファッション --------------------------------------------------------
+ * 毎朝のパイプラインが ZOZOTOWN・WEAR・YouTube 等を横断して集めたトレンド。
+ * 今日のまとめ → 今買えるアイテム（画像+購入リンク）→ トレンド → 参考動画。
+ */
+/* 外部の画像。壊れていたら枠ごと消す。referrerpolicy はホットリンク対策
+ * （参照元でブロックするサイトがあるため）。 */
+function extImg(u,fb){
+  return httpsOnly(u)
+    ? '<img src="'+esc(u)+'" alt="" loading="lazy" referrerpolicy="no-referrer" '+
+      'onerror="this.remove()">'+'<span class="ff">'+esc(fb||'👕')+'</span>'
+    : '<span class="ff">'+esc(fb||'👕')+'</span>';
+}
+function httpsOnly(u){return /^https:\/\//i.test(String(u||''))?String(u):''}
+function fashionCards(list,wide,fb){
+  return '<div class="fgrid'+(wide?' wide':'')+'">'+list.map(function(x){
+    var to=httpsOnly(x.to);
+    return '<div class="fcard"><button class="fc" data-i="'+D.indexOf(x)+'">'+
+      '<span class="fimg">'+extImg(x.thumb,fb)+'</span>'+
+      '<span class="ft">'+esc(x.t)+'</span><span class="fm">'+esc(x.m)+'</span></button>'+
+      (to?'<a class="fgo" href="'+esc(to)+'" target="_blank" rel="noopener">'+
+        (wide?'YouTube で見る':'ZOZOTOWN で見る')+'</a>':'')+'</div>';
+  }).join('')+'</div>';
+}
+function renderFashion(){
+  var all=D.filter(function(x){return x.s==='fashion'&&match(x)});
+  if(!all.length){
+    return {act:'',body:'<div class="empty">ファッションのデータはまだありません。'+
+      '毎朝の自動更新で、いま来ているトレンド・今買えるアイテム・参考動画がここに届きます。</div>'};
+  }
+  var of=function(k){return all.filter(function(x){return x.kind===k})};
+  var briefs=of('brief').sort(byTimeDesc);
+  var trends=of('trend').sort(byTimeDesc);
+  var items=of('item'),vids=of('video').sort(byTimeDesc);
+  var h='';
+  // 今日のまとめ（本文をそのまま読ませる。タップで過去分も見られる）
+  if(briefs.length){
+    var b=briefs[0],bd=b.d||{};
+    h+='<div class="card"><h4>'+esc(b.t)+'</h4>'+
+      (bd.body?'<p class="prose">'+linkTerms(esc(bd.body))+'</p>':'')+
+      '<button class="lnk" data-i="'+D.indexOf(b)+'" style="border-top:1px solid var(--line);margin-top:8px">'+
+      ic('search')+'<span class="lnk-b"><span class="lnk-t">まとめの詳細</span>'+
+      '<span class="lnk-s">'+esc(b.time)+'</span></span></button></div>';
+  }
+  // 今買える注目アイテム
+  if(items.length){
+    h+='<div class="sechead"><span class="n">今買える注目アイテム</span>'+
+      '<span class="c">'+items.length+' 件</span></div>'+fashionCards(items,false,'👕');
+  }
+  // トレンド
+  if(trends.length){
+    h+='<div class="sechead"><span class="n">いま来ているトレンド</span>'+
+      '<span class="c">'+trends.length+' 件</span></div><div class="list">'+
+      trends.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
+  }
+  // 参考にした動画
+  if(vids.length){
+    h+='<div class="sechead"><span class="n">参考になる動画</span>'+
+      '<span class="c">'+vids.length+' 件</span></div>'+fashionCards(vids,true,'▶');
+  }
+  // 過去のまとめ
+  if(briefs.length>1){
+    h+='<div class="sechead"><span class="n">過去のまとめ</span>'+
+      '<span class="c">'+(briefs.length-1)+' 件</span></div><div class="list">'+
+      briefs.slice(1).map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
+  }
   return {act:'',body:h};
 }
 
@@ -1335,6 +1414,10 @@ function showDetail(i){
     h+='<h1 class="dtitle">'+esc(x.t)+'</h1>';
     if(d.sub)h+='<div class="dsub">'+esc(d.sub)+'</div>';
   }
+  // 横長のイメージ写真（ファッションのコーデ・商品・動画サムネ）。
+  // 外部画像なので、読めなければ枠ごと消して隙間を残さない
+  if(httpsOnly(d.hero))h+='<div class="hero"><img src="'+esc(d.hero)+'" alt="" loading="lazy" '+
+    'referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>';
   if(x.tags)h+='<div class="chips">'+x.tags.map(function(t){return '<span class="tag n" data-tag="'+esc(t)+'">'+esc(t)+'</span>'}).join('')+'</div>';
   if(x.s==='mail')h+='<div class="actbar"><button class="act" data-form="task">'+ic('plus')+'タスクを登録</button>'+
     '<button class="act" data-form="event">'+ic('plus')+'予定を登録</button></div>';
@@ -1361,6 +1444,15 @@ function showDetail(i){
       '<span class="lb">'+esc(e.n)+'　'+esc(e.t)+'</span></div>'}).join('')+'</div>';
   if(d.nut)h+='<div class="card"><h4>栄養素（34種のうち抜粋 / 目安比）</h4><div class="nut">'+d.nut.map(function(r){
     return '<div><span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>'}).join('')+'</div></div>';
+  // 買える商品のカード（画像 + 名前 + 購入リンク）。関連リンクより先に出す
+  if(d.shop&&d.shop.length)h+='<div class="card"><h4>買えるところ</h4>'+d.shop.map(function(s){
+    var to=httpsOnly(s.to);
+    return '<div class="shop">'+(httpsOnly(s.img)?'<span class="si">'+extImg(s.img,'👕')+'</span>':'')+
+      '<span class="sb"><span class="st">'+esc(s.t)+'</span>'+
+      (s.m?'<span class="sm">'+esc(s.m)+'</span>':'')+
+      (to?'<a class="sgo" href="'+esc(to)+'" target="_blank" rel="noopener">'+
+        ic('link')+'ZOZOTOWN で見る</a>':'')+'</span></div>';
+  }).join('')+'</div>';
   if(d.links){
     // 見出しはセクションで意味が変わる（メール=登録先、ニュース/検索=出典）
     var lt=d.linksTitle||(x.s==='mail'?'登録された予定 / タスク':'出典');
@@ -2120,7 +2212,7 @@ app.addEventListener('touchend',function(){tr=false});
  * セクション JSON を取り直す。1 ファイルなら 1,200 req/h 程度で、
  * 認証済みの上限 5,000 req/h に十分収まる。
  */
-var SECKEYS=['mail','schedule','anime','tv','movies','meal','essentials','supra','news','search'];
+var SECKEYS=['mail','schedule','anime','tv','movies','meal','essentials','supra','fashion','news','search'];
 
 function setSync(txt,ok){
   document.getElementById('syncTxt').textContent=txt;
