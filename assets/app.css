@@ -296,6 +296,10 @@
   .lnk{display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-top:1px solid var(--line);
     font-size:12.5px;color:var(--gold);cursor:pointer;text-decoration:none;min-width:0}
   .lnk:first-of-type{border-top:0}
+  /* <button class="lnk"> はブラウザ既定の背景・枠が出てしまうので打ち消す
+     （メールの登録先リンク・ファッションのまとめリンクが該当） */
+  button.lnk{width:100%;background:none;border:0;border-top:1px solid var(--line);
+    font-family:var(--font);text-align:left}
   .lnk svg{width:14px;height:14px;flex:none;margin-top:2px}
   /* 長い URL がカードをはみ出さないようにする */
   .lnk-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -335,6 +339,41 @@
     text-decoration:none;transition:.18s}
   .nbgo:hover{border-color:rgba(207,164,92,.45);background:var(--s2)}
   .nbgo svg{width:17px;height:17px}
+  /* ---- ファッション: 画像カード（アイテム / 動画）と詳細の写真 ---- */
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:6px}
+  .fcard{background:var(--s1);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;display:flex;flex-direction:column;box-shadow:inset 0 1px 0 var(--hi)}
+  .fc{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:0;padding:0 0 9px;
+    background:none;border:0;color:inherit;font-family:var(--font);text-align:left;cursor:pointer}
+  .fimg{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:3/4;
+    background:linear-gradient(150deg,#23232B,#15151A);overflow:hidden;margin-bottom:8px}
+  .fgrid.wide .fimg{aspect-ratio:16/9}
+  .fimg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+  .ff{font-size:23px;color:var(--faint)}
+  .ft{font-size:12.5px;color:var(--text);line-height:1.35;padding:0 10px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .fm{font-size:10.5px;color:var(--dim);padding:3px 10px 0;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .fgo{display:block;text-align:center;text-decoration:none;font-size:10.5px;color:var(--gold);
+    padding:8px 6px;border-top:1px solid var(--line);background:var(--goldd)}
+  .fgo:hover{background:rgba(207,164,92,.22)}
+  /* 写真は縦横比がまちまち（商品は縦長・動画サムネは横長）なので、
+     切り取らずにそのままの比率で出す */
+  .hero{width:100%;border-radius:12px;overflow:hidden;line-height:0;
+    border:1px solid var(--line2);margin-bottom:12px;background:var(--s2)}
+  .hero img{width:100%;height:auto;max-height:62vh;object-fit:contain;display:block}
+  .shop{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+  .shop:first-of-type{border-top:0;padding-top:2px}
+  .si{position:relative;display:grid;place-items:center;width:64px;height:80px;flex:none;
+    border-radius:8px;overflow:hidden;background:var(--s2);border:1px solid var(--line)}
+  .si img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+  .sb{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .st{font-size:13px;color:var(--text);line-height:1.4}
+  .sm{font-size:11px;color:var(--dim)}
+  .sgo{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;margin-top:4px;
+    text-decoration:none;font-size:11.5px;color:var(--gold);border:1px solid rgba(207,164,92,.35);
+    background:var(--goldd);border-radius:9px;padding:6px 10px}
+  .sgo svg{width:14px;height:14px}
   /* 詳細画面の Google マップボタンは <a> なので、btn の見た目に合わせる */
   a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box}
   /* Google クチコミ */
