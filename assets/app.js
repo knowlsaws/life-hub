@@ -2535,4 +2535,42 @@ document.addEventListener('keydown',function(e){
   }
 });
 window.addEventListener('pagehide',function(){saveState()});
+
+/* ---- 新しい版の取り込み --------------------------------------------------
+ * ホーム画面に追加したアプリは index.html を強くキャッシュするため、
+ * 直したはずの見た目が何時間も古いままになることがある。
+ * 配信中の index.html を毎回取り直して、読み込み中の版と違えば読み直す。
+ * （起動直後と、アプリに戻ってきたときだけ。入力中・画面を開いている最中は待つ） */
+var MYVER = (function () {
+  var s = document.querySelector('script[src*="app.js"]');
+  var m = /[?&]v=([\w.\-]+)/.exec((s && s.getAttribute('src')) || '');
+  return m ? m[1] : '';
+})();
+var updBusy = false;
+function busyNow() {
+  var t = document.activeElement || {}, tag = (t.tagName || '').toLowerCase();
+  return mask.classList.contains('show') || det.classList.contains('show') ||
+    app.classList.contains('open') || tag === 'input' || tag === 'textarea' ||
+    tag === 'select' || !!t.isContentEditable || !!query;
+}
+function checkUpdate() {
+  if (!MYVER || updBusy || busyNow()) return;
+  updBusy = true;
+  fetch(location.pathname + '?_upd=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : ''; })
+    .then(function (html) {
+      var m = /app\.js\?v=([\w.\-]+)/.exec(html || '');
+      if (!m || m[1] === MYVER) { updBusy = false; return; }
+      // 取り直した先でまた違う版が返るような場合に往復し続けないよう、1回だけ
+      if (sessionStorage.getItem('lh_upd') === m[1]) { updBusy = false; return; }
+      try { sessionStorage.setItem('lh_upd', m[1]); } catch (e) {}
+      saveState();
+      location.replace(location.pathname + '?v=' + m[1]);
+    })
+    .catch(function () { updBusy = false; });
+}
+setTimeout(checkUpdate, 1500);
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) setTimeout(checkUpdate, 400);
+});
 })();
