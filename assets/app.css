@@ -30,14 +30,6 @@
     display:flex;justify-content:center;font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased}
   .app{position:relative;overflow:hidden;width:100%;height:var(--apph,100dvh);
     background:linear-gradient(180deg,var(--bg2),var(--bg));display:flex;flex-direction:column}
-  /* ホーム画面から全画面で起動したとき（iOS の起動直後は 100dvh が実際より
-     小さく出ることがある）。高さは JS が screen から入れる --apph を使い、
-     取りきれない環境でも lvh（最大の画面高さ）で埋める */
-  @media (display-mode: standalone){
-    html,body{overflow:hidden}
-    .stage{min-height:100lvh}
-    .app{height:var(--apph,100lvh)}
-  }
   /* 電話幅を超える画面では中央にフレーム表示にする。
      高さは画面に合わせる（固定 830px だと iPad 横やノート PC ではみ出す）。
      縦が足りない端末（スマホ横持ちなど）は全画面のままにする。 */
@@ -58,6 +50,18 @@
   @media (min-width:1024px) and (min-height:640px){ .app{max-width:820px} }
   /* 大きな外部ディスプレイ。広げすぎると1行が長くなりすぎるので上限を置く */
   @media (min-width:1400px) and (min-height:640px){ .app{max-width:960px} }
+  /* ---- ホーム画面から起動したアプリ（html.full） ----
+     ブラウザのタブと違って「窓の中の書類」ではないので、枠を外して画面いっぱいに広げる。
+     高さは起動直後の誤報告を避けるため --apph（無ければ lvh）を使う。 */
+  html.full,html.full body{overflow:hidden}
+  html.full .stage{padding:0;min-height:100lvh}
+  html.full .app{max-width:none;width:100%;height:var(--apph,100lvh);
+    border:0;border-radius:0;box-shadow:none;
+    --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px)}
+  /* 画面が広いほど左右の余白を少しだけ広げる（端に文字が貼り付かないように） */
+  html.full .scroll{padding:0 clamp(14px,2.2vw,26px) 28px}
+  html.full .topbar,html.full .sw,html.full .actzone{
+    padding-left:clamp(14px,2.2vw,26px);padding-right:clamp(14px,2.2vw,26px)}
   .sync{cursor:pointer}
   .topbar{display:flex;align-items:center;gap:11px;
     padding:calc(17px + var(--safe-t)) 16px 10px;flex:none}
