@@ -395,19 +395,24 @@
   .exg{display:flex;flex-wrap:wrap;gap:5px}
   .w3{flex:none;display:block}
   .animsvg{width:76px;height:95px;background:#141519;border-radius:11px;border:1px solid var(--line)}
+  /* 一覧の小さい図では見出しが潰れて読めないので出さない */
+  .exv:not(.big) .w3 .lab{display:none}
   .bodysvg{width:60px;height:75px}
-  /* 詳細画面では大きく見せる */
-  .exv.big{justify-content:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
-  .exv.big .animsvg{width:184px;height:230px}
-  .exv.big .bodysvg{width:132px;height:165px;background:#141519;border-radius:11px;
-    border:1px solid var(--line)}
-  /* 3D 風の塗り分け。体は灰色のマネキン、効く筋肉だけ赤く光らせる */
-  .w3 .sk{fill:url(#wgBody)}
+  /* 詳細画面。動きの図と人体図はすべて同じ大きさの枠にそろえる */
+  .exv.big{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
+  .exv.big .w3{flex:0 1 calc(50% - 4px);min-width:118px;max-width:190px;
+    width:auto;height:auto;aspect-ratio:240/300;
+    background:#141519;border-radius:11px;border:1px solid var(--line)}
+  /* 3D 風の塗り分け。灰色の筋肉を 1 つずつ描き、効く筋肉だけ赤く光らせる。
+     塗り（グラデーション）は左右で光の向きが違うので JS 側で指定する */
+  .w3 .sk{fill:url(#wgBody)}                  /* 筋肉の隙間に見える下地 */
   .w3 .hd{fill:url(#wgHead)}
-  .w3 .sh{fill:#C9CED8;opacity:.5}            /* 頭のハイライト */
-  .w3 .ln{stroke:#1B1C21;stroke-width:1.2;fill:none;opacity:.75;stroke-linecap:round}
-  .w3 .m1{fill:url(#wgRed)}                   /* 主に効く */
-  .w3 .m2{fill:url(#wgRed);opacity:.34}       /* 補助的に効く */
+  .w3 .sh{fill:#D3D8E2;opacity:.45}           /* 頭のハイライト */
+  .w3 .ln{stroke:#111216;stroke-width:1.1;fill:none;opacity:.6;stroke-linecap:round}
+  .w3 .mm,.w3 .m1,.w3 .m2{stroke:#191A1F;stroke-width:.45;stroke-opacity:.32;
+    stroke-linejoin:round}
+  .w3 .fb{stroke:#101116;stroke-width:.42;fill:none;opacity:.3;stroke-linecap:round}
+  .w3 .m2{opacity:.5}                         /* 補助的に効く */
   .w3 .far{opacity:.55}                       /* 横向きのときの奥側の手足 */
   .w3 .ir rect{fill:url(#wgIron)}             /* ダンベル */
   .w3 .bn rect,.w3 .bn path{fill:url(#wgBench);stroke:#000;stroke-width:.8;opacity:.9}

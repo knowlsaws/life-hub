@@ -49,47 +49,174 @@ window.Workout = (function () {
     neck: -78, headY: -101, headR: 13
   };
 
-  /* 右半身だけ定義し、左は反転して使う（sym:1 は中央 or 手足で反転しない）。
-   * seg: 描くパーツ、v: 見える面。名前は表示にも使う。 */
+  /* 筋肉の名前と、体のどこ（seg）のどちら側（v）に見えるか。
+   * 図は下の A（筋肉ひとつずつの形）で描き、ここの id と結びつけて赤くする。 */
   var M = {
     // 前面
-    chest:    { n: '大胸筋', v: 'front', seg: 'torso',
-      d: 'M3,-74 C15,-77 27,-71 32,-62 C28,-52 16,-47 4,-50 Z' },
-    delt_f:   { n: '三角筋前部', v: 'front', seg: 'arm', sym: 1,
-      d: 'M-8.5,-7 C0,-13 10,-8 11,4 C11,12 6,16 0,16 C-6,15 -9,7 -8.5,-7 Z' },
-    biceps:   { n: '上腕二頭筋', v: 'front', seg: 'arm', sym: 1,
-      d: 'M-7,9 C-1,5 6,9 7,17 C7,27 5,33 3,38 C-2,38 -7,31 -7,20 Z' },
-    forearm:  { n: '前腕', v: 'front', seg: 'fore', sym: 1,
-      d: 'M-5.5,4 C0,1 6,4 6,12 C6,22 4,29 2,33 C-2,33 -5.5,27 -5.5,16 Z' },
-    abs:      { n: '腹直筋', v: 'front', seg: 'torso', sym: 1,
-      d: 'M-13,-44 C-6,-47 6,-47 13,-44 C14,-30 13,-14 12,-4 C5,-1 -5,-1 -12,-4 C-13,-14 -14,-30 -13,-44 Z' },
-    oblique:  { n: '腹斜筋', v: 'front', seg: 'torso',
-      d: 'M13,-46 C20,-44 25,-38 26,-30 C26,-18 22,-9 16,-3 L12,-6 C13,-20 14,-34 13,-46 Z' },
-    quads:    { n: '大腿四頭筋', v: 'front', seg: 'thigh', sym: 1,
-      d: 'M-9,3 C-2,0 8,3 10,13 C10,27 7,38 4,45 C-1,46 -8,38 -9,25 Z' },
-    tibialis: { n: '前脛骨筋', v: 'front', seg: 'shin', sym: 1,
-      d: 'M-4,4 C0,2 5,5 5,14 C5,25 3,31 1,36 C-2,36 -4,29 -4,18 Z' },
+    chest:    { n: '大胸筋',      v: 'front', seg: 'torso' },
+    delt_f:   { n: '三角筋前部',  v: 'front', seg: 'arm' },
+    biceps:   { n: '上腕二頭筋',  v: 'front', seg: 'arm' },
+    forearm:  { n: '前腕',        v: 'front', seg: 'fore' },
+    abs:      { n: '腹直筋',      v: 'front', seg: 'torso' },
+    oblique:  { n: '腹斜筋',      v: 'front', seg: 'torso' },
+    quads:    { n: '大腿四頭筋',  v: 'front', seg: 'thigh' },
+    tibialis: { n: '前脛骨筋',    v: 'front', seg: 'shin' },
     // 背面
-    traps:    { n: '僧帽筋', v: 'back', seg: 'torso',
-      d: 'M2,-90 C14,-86 26,-80 33,-69 C24,-64 12,-60 2,-57 Z' },
-    lats:     { n: '広背筋', v: 'back', seg: 'torso',
-      d: 'M4,-64 C16,-62 28,-56 32,-48 C31,-38 24,-28 14,-21 L5,-25 C7,-40 6,-52 4,-64 Z' },
-    delt_r:   { n: '三角筋後部', v: 'back', seg: 'arm', sym: 1,
-      d: 'M-8.5,-7 C0,-13 10,-8 11,4 C11,12 6,16 0,16 C-6,15 -9,7 -8.5,-7 Z' },
-    triceps:  { n: '上腕三頭筋', v: 'back', seg: 'arm', sym: 1,
-      d: 'M-7,9 C-1,5 6,9 7,17 C7,27 5,33 3,38 C-2,38 -7,31 -7,20 Z' },
-    forearm_b:{ n: '前腕', v: 'back', seg: 'fore', sym: 1,
-      d: 'M-5.5,4 C0,1 6,4 6,12 C6,22 4,29 2,33 C-2,33 -5.5,27 -5.5,16 Z' },
-    erector:  { n: '脊柱起立筋', v: 'back', seg: 'torso', sym: 1,
-      d: 'M-9,-58 C-4,-61 4,-61 9,-58 L8,-8 C3,-5 -3,-5 -8,-8 Z' },
-    glutes:   { n: '大殿筋', v: 'back', seg: 'pelvis',
-      d: 'M2,-1 C12,-3 22,3 23,10 C22,17 14,21 4,19 C3,12 2,6 2,-1 Z' },
-    hams:     { n: 'ハムストリング', v: 'back', seg: 'thigh', sym: 1,
-      d: 'M-9,4 C-2,1 8,4 9,14 C9,28 6,38 3,44 C-2,45 -9,37 -9,24 Z' },
-    calves:   { n: 'ふくらはぎ', v: 'back', seg: 'shin', sym: 1,
-      d: 'M-7,2 C-1,0 6,3 7,12 C7,23 4,30 2,35 C-2,35 -7,28 -7,16 Z' }
+    traps:    { n: '僧帽筋',      v: 'back',  seg: 'torso' },
+    lats:     { n: '広背筋',      v: 'back',  seg: 'torso' },
+    delt_r:   { n: '三角筋後部',  v: 'back',  seg: 'arm' },
+    triceps:  { n: '上腕三頭筋',  v: 'back',  seg: 'arm' },
+    forearm_b:{ n: '前腕',        v: 'back',  seg: 'fore' },
+    erector:  { n: '脊柱起立筋',  v: 'back',  seg: 'torso' },
+    glutes:   { n: '大殿筋',      v: 'back',  seg: 'pelvis' },
+    hams:     { n: 'ハムストリング', v: 'back', seg: 'thigh' },
+    calves:   { n: 'ふくらはぎ',  v: 'back',  seg: 'shin' }
   };
   function mName(id) { return (M[id] || {}).n || id; }
+
+  /* 見えている筋肉を 1 つずつ描くための形。パーツごとのローカル座標。
+   * id …… 効く筋肉として赤くできるもの（M の見出し）。無いものは陰影用の筋肉。
+   * sym:1 … 体の中心にあるので左右に複製しない。
+   * 右半身だけ書き、左は scale(-1,1) で複製する（光の向きも入れ替える）。 */
+  var A = {
+    torso: {
+      front: [
+        // 首
+        { d: 'M2,-89 C5,-84 7,-80 8,-76 L2,-76 C1.5,-81 1.8,-85 2,-89 Z' },
+        // 僧帽筋（首から肩へ落ちる線）
+        { id: 'traps', d: 'M5,-85 C15,-83 25,-78 33,-69 C25,-71 14,-73 5,-73 Z' },
+        // 大胸筋（鎖骨部 / 胸肋部）
+        { id: 'chest', d: 'M3,-73 C13,-76 24,-73 32,-66 C24,-63.5 13,-62.5 4,-63.5 Z',
+          f: 'M7,-71 C15,-72 23,-70 29,-66.5' },
+        { id: 'chest', d: 'M3,-62.5 C13,-61.5 24,-63 31.5,-65 C30,-55 20,-45 5,-46.5 ' +
+          'C4,-52 3,-58 3,-62.5 Z',
+          f: 'M6,-59 C14,-57.5 22,-57 28.5,-59.5 M6,-53 C13,-51.5 20,-51 26,-54 ' +
+             'M6,-48 C11,-47 16,-47 21,-49' },
+        // 広背筋（脇の下から見える縁）
+        { id: 'lats', d: 'M27,-62 C32,-56 33.5,-49 31.5,-41 L27.5,-43.5 C28.5,-51 28.5,-57 27,-62 Z',
+          f: 'M28.5,-58 C30.5,-53 31,-48 30,-44' },
+        // 前鋸筋（肋骨の上のギザギザ）
+        { d: 'M14,-46 C19,-47 24,-46 27,-44 C24,-42 19,-42 14.5,-43 Z' },
+        { d: 'M13.5,-40.5 C18.5,-41.5 23,-40.5 26,-38.5 C23,-36.5 18,-36.5 14,-37.5 Z' },
+        { d: 'M13,-35 C18,-36 22,-35 25,-33 C22,-31 17.5,-31 13.5,-32 Z' },
+        // 腹直筋（左右 4 段）
+        { id: 'abs', d: 'M1.5,-45 C5,-46.5 10,-45.5 12,-43.5 L11.8,-37.5 C8,-36 4,-36 1.5,-36.8 Z' },
+        { id: 'abs', d: 'M1.5,-35.5 C5,-36.5 9.5,-36 11.8,-34.8 L11.5,-28 C8,-26.5 4,-26.5 1.5,-27.3 Z' },
+        { id: 'abs', d: 'M1.5,-26 C5,-27 9.5,-26.5 11.5,-25.3 L11,-18.5 C8,-17 4,-17 1.5,-17.8 Z' },
+        { id: 'abs', d: 'M1.5,-16.5 C5,-17.5 9,-17 11,-15.8 L10,-4.5 C7,-2 4,-2 1.5,-3.5 Z' },
+        // 腹斜筋
+        { id: 'oblique', d: 'M13,-43 C20,-41 24.5,-35 25,-27 C25,-17 21,-9 16,-3.5 L12.8,-8 ' +
+          'C14,-20 14,-31 13,-43 Z',
+          f: 'M15,-38 C20,-33 22.5,-26 22,-16 M14,-28 C18,-24 20,-19 19.5,-12' }
+      ],
+      back: [
+        // 僧帽筋（上部の傾斜 / 中下部のひし形）
+        { id: 'traps', d: 'M4,-87 C14,-84 25,-79 33,-70 C24,-67 13,-64.5 4,-63 Z' },
+        { id: 'traps', sym: 1, d: 'M0,-71 C9,-69 16.5,-62 19,-54 C13,-45 6,-38 0,-33.5 ' +
+          'C-6,-38 -13,-45 -19,-54 C-16.5,-62 -9,-69 0,-71 Z',
+          f: 'M0,-68 L0,-36 M2,-67 C8,-63 13,-58 16,-54 M-2,-67 C-8,-63 -13,-58 -16,-54 ' +
+             'M2,-45 C7,-49 12,-53 16,-55 M-2,-45 C-7,-49 -12,-53 -16,-55' },
+        // 棘下筋・大円筋（肩甲骨まわり）
+        { d: 'M9,-68 C17,-67 23,-63 24,-58.5 C19,-56.5 12,-58 8,-62 Z' },
+        { d: 'M13,-62 C20.5,-60 25.5,-56.5 26,-52.5 C22,-50.5 16,-52.5 12.5,-56.5 Z' },
+        // 広背筋（背中の翼）
+        { id: 'lats', d: 'M7,-57 C18,-55 28,-49.5 32,-42 C31,-32 24,-25 13,-19 L6,-23 ' +
+          'C9,-35 9,-47 7,-57 Z',
+          f: 'M9,-51 C17,-47 24,-42 29,-38 M9,-42 C16,-38 22,-33 26,-29 ' +
+             'M8.5,-33 C14,-30 19,-26 22,-23' },
+        // 脊柱起立筋（背骨の両脇）
+        { id: 'erector', d: 'M2,-42 C6,-44 9.5,-41 9.5,-34 L8.5,-8 C5,-4.5 2,-4.5 2,-8.5 Z',
+          f: 'M5.5,-38 L5,-10' }
+      ]
+    },
+    arm: {
+      front: [
+        { id: 'delt_f', d: 'M-9,-7 C-4,-12.5 2,-10.5 3,1 C1,7 -5,8 -8.5,4 Z' },
+        { id: 'delt_f', d: 'M2,-10.5 C7.5,-11.5 11,-5 11,3 C10,10 4,11 2,5 Z',
+          f: 'M4.5,-9 C6,-4 6.5,2 5.5,8 M7.5,-8 C9,-4 9.5,1 9,6' },
+        { id: 'biceps', d: 'M-6.5,9 C-2,6 2,8 3,16 C3,26 2,32 1,37 C-2,37 -6.5,30 -6.5,20 Z',
+          f: 'M-2.5,12 C-1,20 -1,28 -1.5,35' },
+        { id: 'biceps', d: 'M3,11 C6.5,10 7.5,15 7.5,21 C7.5,29 5.5,34 3.5,37 L1.8,37 ' +
+          'C2.6,30 3,20 3,11 Z' },
+        { d: 'M5,25 C8.5,26 9.5,30 9.5,34 L7.5,39 L4.5,38 Z' }
+      ],
+      back: [
+        { id: 'delt_r', d: 'M-9,-7 C-4,-12.5 2,-10.5 3,1 C1,7 -5,8 -8.5,4 Z' },
+        { id: 'delt_r', d: 'M2,-10.5 C7.5,-11.5 11,-5 11,3 C10,10 4,11 2,5 Z',
+          f: 'M4.5,-9 C6,-4 6.5,2 5.5,8 M7.5,-8 C9,-4 9.5,1 9,6' },
+        { id: 'triceps', d: 'M-6.5,8 C-2,5 1,8 2,18 C2,28 1,33 0,37 C-3,37 -6.5,30 -6.5,20 Z',
+          f: 'M-2.5,11 C-1.5,20 -1.5,28 -2,35' },
+        { id: 'triceps', d: 'M2,10 C6.5,9 8,15 8,22 C8,30 6,34.5 4,37 L2,37 C2.8,30 2,20 2,10 Z' }
+      ]
+    },
+    fore: {
+      front: [
+        { id: 'forearm', d: 'M-5.5,4 C-1.5,2 2,5 2.5,12 C2.5,21 1.5,27 0.5,32 ' +
+          'C-2.5,32 -5.5,26 -5.5,16 Z' },
+        { id: 'forearm', d: 'M2,3 C5.5,3.5 6.5,9 6.5,15 C6.5,23 4.5,28 2.5,32 L1,32 ' +
+          'C1.8,24 2,14 2,3 Z' }
+      ],
+      back: [
+        { id: 'forearm_b', d: 'M-5.5,4 C-1.5,2 2,5 2.5,12 C2.5,21 1.5,27 0.5,32 ' +
+          'C-2.5,32 -5.5,26 -5.5,16 Z' },
+        { id: 'forearm_b', d: 'M2,3 C5.5,3.5 6.5,9 6.5,15 C6.5,23 4.5,28 2.5,32 L1,32 ' +
+          'C1.8,24 2,14 2,3 Z' }
+      ]
+    },
+    thigh: {
+      front: [
+        // 内転筋（内もも）
+        { d: 'M-9,5 C-6,3.5 -4.5,9 -4.5,15 L-6.5,26 L-9,21 Z' },
+        // 大腿直筋（真ん中）
+        { id: 'quads', d: 'M-3.5,4 C0.5,2 4,4.5 4.5,14 C4.5,28 3.5,38 2.5,45 L-1.5,45 ' +
+          'C-2.5,34 -3.5,18 -3.5,4 Z',
+          f: 'M0.5,8 C1.5,20 1.5,33 1,43' },
+        // 外側広筋
+        { id: 'quads', d: 'M4,5 C8,6.5 9.5,14 9.5,22 C9.5,32 7.5,40 5.5,45 L3.5,45 ' +
+          'C4.5,32 5,18 4,5 Z' },
+        // 内側広筋（膝の内側のふくらみ）
+        { id: 'quads', d: 'M-8,19 C-4.5,21 -3,29 -4,39 C-5,45 -8,46 -9,41 C-9,33 -8.5,25 -8,19 Z' }
+      ],
+      back: [
+        { d: 'M-9,4 C-6,3 -4.5,8 -4.5,14 L-6.5,25 L-9,20 Z' },
+        // 大腿二頭筋（外側）
+        { id: 'hams', d: 'M3,5 C7,6.5 9,14 9,24 C9,34 7,40.5 5,44 L3,44 C4,30 4,16 3,5 Z',
+          f: 'M5.5,9 C6.5,20 6.5,32 5.5,42' },
+        // 半腱様筋・半膜様筋（内側）
+        { id: 'hams', d: 'M-8,5 C-4,4 -2,10 -2,20 C-2,32 -4,40 -5.5,44 L-8,44 ' +
+          'C-9,30 -9,16 -8,5 Z' }
+      ]
+    },
+    shin: {
+      front: [
+        { id: 'tibialis', d: 'M-4.5,4 C-0.5,2 2.5,6 2.5,14 C2.5,25 1.5,32 0.5,37 L-2.5,36 ' +
+          'C-4.5,28 -4.5,14 -4.5,4 Z' },
+        { d: 'M3,6 C5.5,7 6,12 5.5,18 L4,28 L2.5,26 C3,18 3,12 3,6 Z' }
+      ],
+      back: [
+        // 腓腹筋（内側頭・外側頭）
+        { id: 'calves', d: 'M-6.5,3 C-3,1 -0.5,5 -0.5,14 C-0.5,22 -2.5,28 -4,32 ' +
+          'C-6,29 -7,20 -6.5,3 Z' },
+        { id: 'calves', d: 'M0.5,3 C4.5,2 6.5,6 6.5,14 C6.5,22 4.5,28 3,32 L1.5,32 ' +
+          'C1.5,22 0.5,12 0.5,3 Z',
+          f: 'M3.5,6 C4.5,13 4.5,22 3.5,29' },
+        // ヒラメ筋（アキレス腱へ）
+        { id: 'calves', sym: 1, d: 'M-4,27 C-1,29 1,29 4,27 L2.5,38 L-2.5,38 Z' }
+      ]
+    },
+    pelvis: {
+      front: [
+        { d: 'M2,-5 C10,-7 17,-2 19,6 C17,13 11,17 3,15 Z' },
+        { d: 'M1,10 C4,12 7,16 8,21 L2,21 Z' }
+      ],
+      back: [
+        // 中殿筋 / 大殿筋
+        { id: 'glutes', d: 'M13,-7 C19,-8 22.5,-3 22.5,3 C19.5,1.5 15,-2 13,-7 Z' },
+        { id: 'glutes', d: 'M2,-3 C11,-6 20,0.5 22,9 C21,17 13,21 4,19 C2.5,12 2,4 2,-3 Z',
+          f: 'M5,-1 C11,2 16,7 19,12 M4,6 C8,9 12,13 14,17' }
+      ]
+    }
+  };
 
   // ---- 図を組み立てる道具 --------------------------------------------------
   function r2(n) { return Math.round(n * 100) / 100; }
@@ -134,19 +261,27 @@ window.Workout = (function () {
   }
   function sk(d) { return '<path class="sk" d="' + d + '"/>'; }
 
-  /* そのパーツに乗る筋肉を赤く塗る。lv: 1=主に効く（発光）/ 2=補助 */
-  function musc(seg, view, lv, glow) {
-    var o = '';
-    Object.keys(M).forEach(function (id) {
-      var m = M[id];
-      if (m.seg !== seg || m.v !== view) return;
-      var l = lv(id); if (!l) return;
-      var f = (l === 1 && glow) ? ' filter="url(#wgGlow)"' : '';
-      var c = ' class="' + (l === 1 ? 'm1' : 'm2') + '"';
-      o += '<path' + c + ' d="' + m.d + '"' + f + '/>';
-      if (!m.sym) o += '<path' + c + ' d="' + m.d + '" transform="scale(-1,1)"' + f + '/>';
-    });
+  /* そのパーツに見えている筋肉を全部描く。効く筋肉だけ赤くして光らせる。
+   * lv: 1=主に効く（発光）/ 2=補助。mir はパーツ自体が反転しているか（光の向き用）。 */
+  function musc(seg, view, lv, glow, mir) {
+    var list = (A[seg] || {})[view] || [], o = '';
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i], l = s.id ? lv(s.id) : 0;
+      o += one(s, l, glow, !!mir);
+      if (!s.sym) o += one(s, l, glow, !mir, 1);
+    }
     return o;
+  }
+  /* 筋肉ひとつ。flip なら左半身として反転して描く。
+   * 反転すると光も裏返るので、塗りは左右で別のグラデーションを使う。 */
+  function one(s, l, glow, right, flip) {
+    var g = (l === 1 || l === 2 ? 'wgRed' : 'wgMus') + (right ? 'R' : '');
+    var t = flip ? ' transform="scale(-1,1)"' : '';
+    return '<path class="' + (l === 1 ? 'm1' : l === 2 ? 'm2' : 'mm') + '" d="' + s.d +
+      '" fill="url(#' + g + ')"' + t +
+      ((l === 1 && glow) ? ' filter="url(#wgGlow)"' : '') + '/>' +
+      // 筋繊維の流れ（これが入ると一気に「筋肉」に見える）
+      (s.f ? '<path class="fb" d="' + s.f + '"' + t + '/>' : '');
   }
 
   // ---- 体のパーツ -----------------------------------------------------------
@@ -164,38 +299,51 @@ window.Workout = (function () {
     return rotG(vert ? add(rot, 90) : rot, dur, '<g class="ir">' + IRON + '</g>');
   }
 
+  /* 頭。首の胸鎖乳突筋と顎の陰で、のっぺりした球にならないようにする。 */
   function head(view) {
-    return '<path class="sk" d="M-7.5,-76 h15 v-12 h-15 Z"/>' +
-      '<ellipse class="hd" cx="0" cy="' + G.headY + '" rx="' + (G.headR - 1.5) + '" ry="' + G.headR + '"/>' +
-      (view === 'back' ? '' :
-        '<ellipse class="sh" cx="-4.5" cy="' + (G.headY - 3) + '" rx="3" ry="4"/>');
+    var y = G.headY, r = G.headR;
+    return '<path class="sk" d="M-8,-74 C-8,-80 -7.5,-86 -7,-90 L7,-90 C7.5,-86 8,-80 8,-74 Z"/>' +
+      '<path class="mm" fill="url(#wgMus)" d="M-6.5,-76 C-6,-82 -5.5,-86 -5,-89 L-1,-89 ' +
+      'C-1.5,-85 -2,-80 -2.5,-76 Z"/>' +
+      '<path class="mm" fill="url(#wgMusR)" d="M6.5,-76 C6,-82 5.5,-86 5,-89 L1,-89 ' +
+      'C1.5,-85 2,-80 2.5,-76 Z"/>' +
+      '<ellipse class="hd" cx="0" cy="' + y + '" rx="' + (r - 1.5) + '" ry="' + r + '"/>' +
+      (view === 'back'
+        ? '<path class="ln" d="M0,' + (y + r - 2) + ' L0,' + (y - r + 5) + '"/>'
+        : '<ellipse class="sh" cx="-4" cy="' + (y - 4) + '" rx="3.4" ry="4.4"/>');
   }
-  /* 胴。筋肉を塗ってから溝を重ね、赤くなっても筋の切れ目が見えるようにする。 */
+  /* 胴。下地を敷いてから筋肉を 1 つずつ乗せ、最後に溝の線で締める。 */
   function torso(view, lv, glow, sx) {
     return '<g transform="scale(' + sx + ',1)">' + sk(TORSO) + musc('torso', view, lv, glow) +
       (view === 'front'
-        ? '<path class="ln" d="M0,-73 L0,-49"/><path class="ln" d="M-14,-50 C-5,-45 5,-45 14,-50"/>' +
-          '<path class="ln" d="M0,-46 L0,-6 M-12,-36 h24 M-12,-24 h24 M-11,-13 h22"/>'
-        : '<path class="ln" d="M0,-74 L0,-2"/><path class="ln" d="M-17,-59 C-8,-52 8,-52 17,-59"/>' +
-          '<path class="ln" d="M-25,-46 C-16,-36 -8,-28 -3,-24 M25,-46 C16,-36 8,-28 3,-24"/>') +
+        ? '<path class="ln" d="M0,-72 L0,-48 M0,-45 L0,-4"/>'
+        : '<path class="ln" d="M0,-72 L0,-2"/>') +
       '</g>';
   }
   function arm(side, sh, el, dur, view, lv, glow, hold, base, sx) {
     var cancel = side > 0 ? neg(add(add(base, sh), el)) : add(base, neg(add(sh, el)));
-    var hand = '<ellipse class="sk" cx="0" cy="' + (G.fArm + 4) + '" rx="5.2" ry="6.2"/>' +
+    var mir = side < 0;
+    var hand = '<ellipse class="sk" cx="0" cy="' + (G.fArm + 4) + '" rx="5.4" ry="6.4"/>' +
+      '<path class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" d="M-4,' + (G.fArm + 1) +
+      ' C0,' + (G.fArm - 1) + ' 4,' + (G.fArm + 1) + ' 4.4,' + (G.fArm + 5) +
+      ' C3,' + (G.fArm + 9) + ' -3,' + (G.fArm + 9) + ' -4,' + (G.fArm + 5) + ' Z"/>' +
       (hold ? '<g transform="translate(0,' + (G.fArm + 5) + ')">' + dumbbell(cancel, dur) + '</g>' : '');
     var fore = joint(0, G.uArm, 0, el, dur,
-      limb(G.fArm, 11.5, 8.5) + musc('fore', view, lv, glow) + hand);
+      limb(G.fArm, 11.5, 8.5) + musc('fore', view, lv, glow, mir) + hand);
     return joint(side * G.shX * sx, G.shY, side < 0, sh, dur,
-      limb(G.uArm, 15, 11.5) + musc('arm', view, lv, glow) + fore);
+      limb(G.uArm, 15, 11.5) + musc('arm', view, lv, glow, mir) + fore);
   }
   function leg(side, hip, knee, fore, dur, view, lv, glow, sx) {
-    var th = G.thigh * fore;
+    var th = G.thigh * fore, mir = side < 0;
     return joint(side * G.hipX * sx, G.hipY, side < 0, hip, dur,
       '<ellipse class="sk" cx="0" cy="0" rx="10.5" ry="10"/>' +
-      '<g transform="scale(1,' + fore + ')">' + sk(taper(G.thigh, 21, 14)) + musc('thigh', view, lv, glow) + '</g>' +
+      '<g transform="scale(1,' + fore + ')">' + sk(taper(G.thigh, 21, 14)) +
+        musc('thigh', view, lv, glow, mir) + '</g>' +
       joint(0, th, 0, knee, dur,
-        limb(G.shin, 14, 9.5) + musc('shin', view, lv, glow) +
+        limb(G.shin, 14, 9.5) +
+        // 膝の皿
+        '<ellipse class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" cx="0" cy="3" rx="5.4" ry="4.6"/>' +
+        musc('shin', view, lv, glow, mir) +
         '<path class="sk" d="M-5,' + (G.shin - 2) + ' C-6,' + (G.shin + 4) + ' -3,' + (G.shin + 8) +
         ' 3,' + (G.shin + 8) + ' L11,' + (G.shin + 8) + ' C14,' + (G.shin + 7) + ' 14,' + (G.shin + 1) +
         ' 10,' + G.shin + ' Z"/>'));
@@ -207,30 +355,30 @@ window.Workout = (function () {
    * hold: 手に持つダンベル。mid = 両手で 1 個（体の中心に描く）。 */
   var STAND = { sh: -8, el: -4, hip: 6, knee: -6 };
   var POSE = {
-    press: { dur: 3, at: [120, 154], sc: .95, prop: 'seat', floor: 244,
+    press: { dur: 3, at: [120, 154], sc: .93, prop: 'seat', floor: 244,
       armR: { sh: [-100, -164], el: [-76, -14] }, hold: 'both',
       legR: { hip: 4, knee: -4, fore: .5 } },
     curl: { dur: 2.8, at: [120, 140],
       armR: { sh: 6, el: [0, -125] }, hold: 'both', legR: STAND },
     raise: { dur: 3.2, at: [120, 142], sc: .88, floor: 242,
       armR: { sh: [-8, -78], el: -14 }, hold: 'both', legR: STAND },
-    ext: { dur: 2.8, at: [120, 154], sc: .92, prop: 'seat', floor: 240,
+    ext: { dur: 2.8, at: [120, 154], sc: .93, prop: 'seat', floor: 244,
       armR: { sh: -178, el: [136, 8] }, hold: 'both',
       legR: { hip: 4, knee: -4, fore: .5 } },
     /* 横向き・寝た姿勢では左右の手足が同じ向きに動くので、
      * 反転している分だけ armL / legL の角度を逆にする。 */
-    bench: { dur: 3, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+    bench: { dur: 3, at: [124, 148], rot: -90, sc: .95, prop: 'flat', side: .72, floor: 258,
       armR: { sh: [-54, -88], el: [-40, -4] }, armL: { sh: [54, 88], el: [40, 4] }, hold: 'both',
       legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
-    fly: { dur: 3.4, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+    fly: { dur: 3.4, at: [124, 148], rot: -90, sc: .95, prop: 'flat', side: .72, floor: 258,
       armR: { sh: [-90, -36], el: -16 }, armL: { sh: [90, 36], el: 16 }, hold: 'both',
       legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
     // プルオーバーは頭の向こう側へ弧を描くので、フライとは別の動き
-    pullover: { dur: 3.4, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+    pullover: { dur: 3.4, at: [136, 148], rot: -90, sc: .88, prop: 'flat', side: .72, floor: 256,
       armR: { sh: [-92, -136], el: -10 }, armL: { sh: [92, 136], el: 10 }, hold: 'both',
       legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
     // プランクロウ: 腕立ての姿勢で片手ずつ引く
-    plank: { dur: 3.2, at: [94, 190], rot: -68, sc: .82, side: .72, floor: 236,
+    plank: { dur: 3.2, at: [102, 184], rot: -68, sc: .88, side: .72, floor: 242,
       armR: { sh: [68, 44], el: [0, -76] }, hold: 'right', armL: { sh: -68, el: 0 },
       legR: { hip: 0, knee: 0 }, legL: { hip: -6, knee: 6 } },
     // 前かがみになる種目は、横から見た姿（side）にしないと動きが分からない
@@ -245,18 +393,19 @@ window.Workout = (function () {
       legR: { hip: 6, knee: -12 }, legL: { hip: -6, knee: 12 } }
   };
 
-  /* ベンチ・椅子。人の後ろに、図の座標そのままで描く。 */
+  /* ベンチ・椅子。体と同じ原点（骨盤）・同じ倍率で描くので、
+   * ポーズの大きさを変えても道具が体からずれない（回転だけは掛けない）。 */
   var PROPS = {
-    seat: '<g class="bn"><path d="M100,52 L146,52 L152,176 L106,176 Z"/>' +
-      '<rect x="84" y="170" width="74" height="14" rx="5"/>' +
-      '<rect x="92" y="184" width="11" height="62" rx="4"/>' +
-      '<rect x="139" y="184" width="11" height="62" rx="4"/></g>',
-    flat: '<g class="bn"><rect x="28" y="170" width="164" height="15" rx="6"/>' +
-      '<rect x="42" y="185" width="11" height="56" rx="4"/>' +
-      '<rect x="168" y="185" width="11" height="56" rx="4"/></g>',
-    row: '<g class="bn"><rect x="22" y="190" width="98" height="14" rx="5"/>' +
-      '<rect x="32" y="204" width="10" height="32" rx="4"/>' +
-      '<rect x="100" y="204" width="10" height="32" rx="4"/></g>'
+    seat: '<path d="M-21,-105 L27,-105 L34,25 L-15,25 Z"/>' +
+      '<rect x="-38" y="19" width="78" height="15" rx="5"/>' +
+      '<rect x="-30" y="34" width="12" height="65" rx="4"/>' +
+      '<rect x="20" y="34" width="12" height="65" rx="4"/>',
+    flat: '<rect x="-117" y="28.5" width="195" height="18" rx="7"/>' +
+      '<rect x="-100" y="46.5" width="13" height="66" rx="5"/>' +
+      '<rect x="50" y="46.5" width="13" height="66" rx="5"/>',
+    row: '<rect x="-128" y="70" width="98" height="14" rx="5"/>' +
+      '<rect x="-118" y="84" width="10" height="32" rx="4"/>' +
+      '<rect x="-50" y="84" width="10" height="32" rx="4"/>'
   };
 
   /* 体を 1 体組み立てる。pose の角度どおりに関節を並べ、効く筋肉を赤くする。
@@ -290,7 +439,10 @@ window.Workout = (function () {
       body += movG(y, dur, '<g transform="rotate(' + (pose.midV ? 90 : 0) + ')" class="ir">' + IRON + '</g>');
     }
     var sc = pose.sc || 1, at = pose.at || [120, 140];
-    return (PROPS[pose.prop] || '') +
+    return (PROPS[pose.prop]
+        ? '<g class="bn" transform="translate(' + at[0] + ',' + at[1] + ') scale(' + sc + ')">' +
+          PROPS[pose.prop] + '</g>'
+        : '') +
       '<g transform="translate(' + at[0] + ',' + at[1] + ')' +
       (pose.rot ? ' rotate(' + pose.rot + ')' : '') + (sc !== 1 ? ' scale(' + sc + ')' : '') + '">' +
       movG(pose.dy || 0, dur, body) + '</g>' +
@@ -322,7 +474,7 @@ window.Workout = (function () {
     var p = POSE[kind] || POSE.curl;
     view = view === 'back' ? 'back' : 'front';
     return svg('animsvg', '動作のアニメーション。' + (primary || []).map(mName).join('・') + 'が赤く光っています',
-      build(p, view, levels(primary, secondary), glow !== 0, ''), p.floor || 252);
+      build(p, view, levels(primary, secondary), glow !== 0, '動き'), p.floor || 252);
   }
 
   // ---- メニュー -----------------------------------------------------------
