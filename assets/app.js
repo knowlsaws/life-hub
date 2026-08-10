@@ -1,4 +1,25 @@
 (function(){
+/* ---- 全画面（ホーム画面から起動）のときの高さ補正 -----------------------
+ * iOS はホーム画面から起動した直後、画面の高さ（100dvh・innerHeight）を
+ * 実際より小さく報告することがあり、下バーの下に黒い帯が残る。
+ * 一度スクロールすると直る類いの不具合なので、レイアウトの高さは
+ * 端末の画面サイズ（screen）から直接決めて、報告値のブレに影響されない
+ * ようにする。--apph が無いときは CSS 側が従来どおり 100dvh を使う。
+ * navigator.standalone は iOS のホーム画面起動のときだけ true になる
+ * （PC にインストールした場合はウィンドウ≠画面なので適用しない）。 */
+(function () {
+  if (navigator.standalone !== true || !window.screen) return;
+  function fit() {
+    var sw = screen.width, sh = screen.height;
+    if (!sw || !sh) return;
+    var portrait = !window.matchMedia || matchMedia('(orientation: portrait)').matches;
+    var h = portrait ? Math.max(sw, sh) : Math.min(sw, sh);
+    document.documentElement.style.setProperty('--apph', h + 'px');
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 80); });
+})();
 var ICON={
  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
  schedule:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
