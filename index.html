@@ -5,53 +5,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0A0C">
 <title>LIFE</title>
-<link rel="stylesheet" href="assets/app.css?v=dev725128">
+<link rel="stylesheet" href="assets/app.css?v=dev725129">
 </head>
 <body>
 <!-- 筋トレの 3D 風イラストで使う塗り（グラデーションと発光）。
      図をいくつ描いても定義は 1 組で済むよう、ここに置いて id で参照する。 -->
 <svg class="wdefs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
-  <!-- 体の下地。筋肉より一段暗く、隙間が「影」に見えるようにする -->
+  <!-- 背景（明るいスタジオ。添付写真と同じ、白に近い灰色の背景） -->
+  <radialGradient id="wgBg" cx=".5" cy=".38" r=".85">
+    <stop offset="0" stop-color="#F2F2F0"/><stop offset=".65" stop-color="#E4E4E1"/>
+    <stop offset="1" stop-color="#D2D2CE"/>
+  </radialGradient>
+  <!-- 体の下地。筋肉より一段暗い粘土色 -->
   <linearGradient id="wgBody" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0" stop-color="#24262B"/><stop offset=".2" stop-color="#4E525A"/>
-    <stop offset=".45" stop-color="#6E727B"/><stop offset=".72" stop-color="#4B4E56"/>
-    <stop offset="1" stop-color="#212328"/>
+    <stop offset="0" stop-color="#6E716C"/><stop offset=".25" stop-color="#8E918C"/>
+    <stop offset=".5" stop-color="#9DA09B"/><stop offset=".75" stop-color="#82857F"/>
+    <stop offset="1" stop-color="#63665F"/>
   </linearGradient>
   <!-- 筋肉ひとつ分の膨らみ。光は左上から。R 付きは左右反転したパーツ用 -->
-  <radialGradient id="wgMus" cx=".34" cy=".26" r=".95">
-    <stop offset="0" stop-color="#BFC4CE"/><stop offset=".4" stop-color="#8E939D"/>
-    <stop offset=".75" stop-color="#5F636B"/><stop offset="1" stop-color="#41444B"/>
+  <radialGradient id="wgMus" cx=".34" cy=".24" r=".95">
+    <stop offset="0" stop-color="#D8DAD4"/><stop offset=".42" stop-color="#B0B3AC"/>
+    <stop offset=".75" stop-color="#878A83"/><stop offset="1" stop-color="#6D7068"/>
   </radialGradient>
-  <radialGradient id="wgMusR" cx=".66" cy=".26" r=".95">
-    <stop offset="0" stop-color="#BFC4CE"/><stop offset=".4" stop-color="#8E939D"/>
-    <stop offset=".75" stop-color="#5F636B"/><stop offset="1" stop-color="#41444B"/>
+  <radialGradient id="wgMusR" cx=".66" cy=".24" r=".95">
+    <stop offset="0" stop-color="#D8DAD4"/><stop offset=".42" stop-color="#B0B3AC"/>
+    <stop offset=".75" stop-color="#878A83"/><stop offset="1" stop-color="#6D7068"/>
   </radialGradient>
-  <radialGradient id="wgHead" cx=".36" cy=".3" r=".82">
-    <stop offset="0" stop-color="#C2C7D1"/><stop offset=".5" stop-color="#8A8E97"/>
-    <stop offset="1" stop-color="#33353B"/>
+  <radialGradient id="wgHead" cx=".36" cy=".28" r=".85">
+    <stop offset="0" stop-color="#D2D4CE"/><stop offset=".5" stop-color="#ABAEA8"/>
+    <stop offset="1" stop-color="#7C7F78"/>
   </radialGradient>
-  <!-- 効く筋肉（赤） -->
-  <radialGradient id="wgRed" cx=".33" cy=".26" r=".92">
-    <stop offset="0" stop-color="#FFC0A6"/><stop offset=".3" stop-color="#FF7A50"/>
-    <stop offset=".62" stop-color="#E5401F"/><stop offset="1" stop-color="#7A1A0C"/>
+  <!-- 効く筋肉。添付と同じ、輪郭のぼけた赤いにじみ -->
+  <radialGradient id="wgRed" cx=".42" cy=".34" r=".8">
+    <stop offset="0" stop-color="#F65038"/><stop offset=".5" stop-color="#E23A24"/>
+    <stop offset="1" stop-color="#C92C17"/>
   </radialGradient>
-  <radialGradient id="wgRedR" cx=".67" cy=".26" r=".92">
-    <stop offset="0" stop-color="#FFC0A6"/><stop offset=".3" stop-color="#FF7A50"/>
-    <stop offset=".62" stop-color="#E5401F"/><stop offset="1" stop-color="#7A1A0C"/>
+  <radialGradient id="wgRedR" cx=".58" cy=".34" r=".8">
+    <stop offset="0" stop-color="#F65038"/><stop offset=".5" stop-color="#E23A24"/>
+    <stop offset="1" stop-color="#C92C17"/>
   </radialGradient>
   <linearGradient id="wgIron" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#9DA2AC"/><stop offset=".45" stop-color="#5A5E67"/>
-    <stop offset="1" stop-color="#2C2E34"/>
+    <stop offset="0" stop-color="#9EA19B"/><stop offset=".45" stop-color="#757872"/>
+    <stop offset="1" stop-color="#4E514B"/>
   </linearGradient>
   <linearGradient id="wgBench" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#3A3D45"/><stop offset="1" stop-color="#1E1F24"/>
+    <stop offset="0" stop-color="#B4B7B1"/><stop offset=".55" stop-color="#93968F"/>
+    <stop offset="1" stop-color="#6E716B"/>
   </linearGradient>
   <radialGradient id="wgFloor" cx=".5" cy=".5" r=".5">
-    <stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+    <stop offset="0" stop-color="#5B5D58" stop-opacity=".5"/>
+    <stop offset="1" stop-color="#5B5D58" stop-opacity="0"/>
   </radialGradient>
-  <filter id="wgGlow" x="-70%" y="-70%" width="240%" height="240%">
-    <feGaussianBlur stdDeviation="3.2" result="b"/>
-    <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  <!-- 効く場所は「にじませる」。元の形をそのまま重ねると輪郭が出るので混ぜない -->
+  <filter id="wgGlow" x="-60%" y="-60%" width="220%" height="220%">
+    <feGaussianBlur stdDeviation="1.7" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="b"/></feMerge>
+  </filter>
+  <filter id="wgGlow2" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="1.3"/>
   </filter>
 </defs></svg>
 <div class="stage">
@@ -96,11 +107,11 @@
     <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
   </div>
 </div>
-<script src="assets/github.js?v=dev725128"></script>
-<script src="assets/places.js?v=dev725128"></script>
-<script src="assets/nearby.js?v=dev725128"></script>
-<script src="assets/workout.js?v=dev725128"></script>
-<script src="assets/demo-data.js?v=dev725128"></script>
-<script src="assets/app.js?v=dev725128"></script>
+<script src="assets/github.js?v=dev725129"></script>
+<script src="assets/places.js?v=dev725129"></script>
+<script src="assets/nearby.js?v=dev725129"></script>
+<script src="assets/workout.js?v=dev725129"></script>
+<script src="assets/demo-data.js?v=dev725129"></script>
+<script src="assets/app.js?v=dev725129"></script>
 </body>
 </html>
