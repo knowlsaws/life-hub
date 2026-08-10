@@ -5,26 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0A0C">
 <title>LIFE</title>
-<link rel="stylesheet" href="assets/app.css?v=dev725127">
+<link rel="stylesheet" href="assets/app.css?v=dev725128">
 </head>
 <body>
 <!-- 筋トレの 3D 風イラストで使う塗り（グラデーションと発光）。
      図をいくつ描いても定義は 1 組で済むよう、ここに置いて id で参照する。 -->
 <svg class="wdefs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <!-- 体の下地。筋肉より一段暗く、隙間が「影」に見えるようにする -->
   <linearGradient id="wgBody" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0" stop-color="#26272D"/><stop offset=".16" stop-color="#55585F"/>
-    <stop offset=".38" stop-color="#9EA3AD"/><stop offset=".56" stop-color="#7B7F88"/>
-    <stop offset=".84" stop-color="#3D3F46"/><stop offset="1" stop-color="#212227"/>
+    <stop offset="0" stop-color="#24262B"/><stop offset=".2" stop-color="#4E525A"/>
+    <stop offset=".45" stop-color="#6E727B"/><stop offset=".72" stop-color="#4B4E56"/>
+    <stop offset="1" stop-color="#212328"/>
   </linearGradient>
-  <radialGradient id="wgHead" cx=".36" cy=".3" r=".82">
-    <stop offset="0" stop-color="#B4B9C3"/><stop offset=".5" stop-color="#7A7E87"/>
-    <stop offset="1" stop-color="#2A2C32"/>
+  <!-- 筋肉ひとつ分の膨らみ。光は左上から。R 付きは左右反転したパーツ用 -->
+  <radialGradient id="wgMus" cx=".34" cy=".26" r=".95">
+    <stop offset="0" stop-color="#BFC4CE"/><stop offset=".4" stop-color="#8E939D"/>
+    <stop offset=".75" stop-color="#5F636B"/><stop offset="1" stop-color="#41444B"/>
   </radialGradient>
-  <linearGradient id="wgRed" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0" stop-color="#7E1A0E"/><stop offset=".2" stop-color="#D33A22"/>
-    <stop offset=".42" stop-color="#FF7A55"/><stop offset=".62" stop-color="#E8452A"/>
-    <stop offset="1" stop-color="#6E170C"/>
-  </linearGradient>
+  <radialGradient id="wgMusR" cx=".66" cy=".26" r=".95">
+    <stop offset="0" stop-color="#BFC4CE"/><stop offset=".4" stop-color="#8E939D"/>
+    <stop offset=".75" stop-color="#5F636B"/><stop offset="1" stop-color="#41444B"/>
+  </radialGradient>
+  <radialGradient id="wgHead" cx=".36" cy=".3" r=".82">
+    <stop offset="0" stop-color="#C2C7D1"/><stop offset=".5" stop-color="#8A8E97"/>
+    <stop offset="1" stop-color="#33353B"/>
+  </radialGradient>
+  <!-- 効く筋肉（赤） -->
+  <radialGradient id="wgRed" cx=".33" cy=".26" r=".92">
+    <stop offset="0" stop-color="#FFC0A6"/><stop offset=".3" stop-color="#FF7A50"/>
+    <stop offset=".62" stop-color="#E5401F"/><stop offset="1" stop-color="#7A1A0C"/>
+  </radialGradient>
+  <radialGradient id="wgRedR" cx=".67" cy=".26" r=".92">
+    <stop offset="0" stop-color="#FFC0A6"/><stop offset=".3" stop-color="#FF7A50"/>
+    <stop offset=".62" stop-color="#E5401F"/><stop offset="1" stop-color="#7A1A0C"/>
+  </radialGradient>
   <linearGradient id="wgIron" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#9DA2AC"/><stop offset=".45" stop-color="#5A5E67"/>
     <stop offset="1" stop-color="#2C2E34"/>
@@ -82,11 +96,11 @@
     <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
   </div>
 </div>
-<script src="assets/github.js?v=dev725127"></script>
-<script src="assets/places.js?v=dev725127"></script>
-<script src="assets/nearby.js?v=dev725127"></script>
-<script src="assets/workout.js?v=dev725127"></script>
-<script src="assets/demo-data.js?v=dev725127"></script>
-<script src="assets/app.js?v=dev725127"></script>
+<script src="assets/github.js?v=dev725128"></script>
+<script src="assets/places.js?v=dev725128"></script>
+<script src="assets/nearby.js?v=dev725128"></script>
+<script src="assets/workout.js?v=dev725128"></script>
+<script src="assets/demo-data.js?v=dev725128"></script>
+<script src="assets/app.js?v=dev725128"></script>
 </body>
 </html>
