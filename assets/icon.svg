@@ -1,29 +1,70 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-<!-- LIFE のホーム画面アイコン。背景は黒。中央にアプリの金色の L を置く。
+<!-- LIFE のホーム画面アイコン。
+     黒に近いダーク紫の地に光沢をのせ、中央にアプリの L、
+     その足元のくぼみにフクロウを座らせている。
      iOS 側で角丸に切り抜かれるので、四隅まで塗りつぶす。 -->
 <defs>
-  <radialGradient id="bg" cx=".5" cy=".42" r=".72">
-    <stop offset="0" stop-color="#101013"/><stop offset=".6" stop-color="#070708"/>
-    <stop offset="1" stop-color="#000000"/>
+  <radialGradient id="bg" cx=".5" cy=".36" r=".8">
+    <stop offset="0" stop-color="#251B34"/><stop offset=".55" stop-color="#130E1C"/>
+    <stop offset="1" stop-color="#050408"/>
   </radialGradient>
-  <linearGradient id="gold" x1=".2" y1="0" x2=".8" y2="1">
-    <stop offset="0" stop-color="#F9EAC6"/><stop offset=".3" stop-color="#E3BF7F"/>
-    <stop offset=".6" stop-color="#CFA45C"/><stop offset="1" stop-color="#8A6531"/>
+  <linearGradient id="mark" x1=".2" y1="0" x2=".8" y2="1">
+    <stop offset="0" stop-color="#E4DCF4"/><stop offset=".34" stop-color="#BAAFD2"/>
+    <stop offset=".7" stop-color="#8C80AA"/><stop offset="1" stop-color="#564C70"/>
   </linearGradient>
-  <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-    <feGaussianBlur stdDeviation="22"/>
-  </filter>
+  <linearGradient id="owl" x1=".28" y1="0" x2=".72" y2="1">
+    <stop offset="0" stop-color="#D5CBEA"/><stop offset=".38" stop-color="#A296C2"/>
+    <stop offset=".78" stop-color="#6A5E8A"/><stop offset="1" stop-color="#413758"/>
+  </linearGradient>
+  <radialGradient id="eye" cx=".36" cy=".3" r=".82">
+    <stop offset="0" stop-color="#FDEEC9"/><stop offset=".45" stop-color="#E0B26B"/>
+    <stop offset="1" stop-color="#96682A"/>
+  </radialGradient>
+  <!-- 光沢（上からの照り返しと、上辺のふち光） -->
+  <linearGradient id="gl" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity=".2"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#C9BBE8" stop-opacity=".5"/>
+    <stop offset="1" stop-color="#C9BBE8" stop-opacity="0"/>
+  </linearGradient>
+  <filter id="g8" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="8"/></filter>
+  <filter id="g26" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="26"/></filter>
 </defs>
 
 <rect width="1024" height="1024" fill="url(#bg)"/>
 
-<!-- 中央の L（アプリのブランド色） -->
-<g transform="translate(512,512) scale(1.14) translate(-512,-512)">
-  <g transform="translate(-26,6)">
-    <path filter="url(#glow)" opacity=".4" fill="#CFA45C"
-      d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"/>
-    <path fill="url(#gold)"
-      d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"/>
+<g transform="translate(512,512) scale(1.06) translate(-512,-512)">
+ <g transform="translate(-30,-6)">
+  <!-- L（アプリのしるし） -->
+  <path d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"
+    fill="#8C80AA" filter="url(#g26)" opacity=".28"/>
+  <path d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"
+    fill="url(#mark)"/>
+
+  <!-- フクロウ（L の足に止まっている。幅広の顔と大きな丸い目で「フクロウ」に見せる） -->
+  <g transform="translate(606,660) scale(.9)">
+    <path fill="url(#owl)" d="M0,-206 C54,-206 95,-172 95,-122 C95,-56 60,6 0,6
+      C-60,6 -95,-56 -95,-122 C-95,-172 -54,-206 0,-206 Z"/>
+    <path fill="url(#owl)" d="M-90,-158 L-74,-216 L-38,-186 Z"/>
+    <path fill="url(#owl)" d="M90,-158 L74,-216 L38,-186 Z"/>
+    <path fill="#2E2542" opacity=".5" d="M-84,-138 C-84,-176 -44,-190 -42,-152
+      C-40,-118 -80,-110 -84,-138 Z M84,-138 C84,-176 44,-190 42,-152
+      C40,-118 80,-110 84,-138 Z"/>
+    <g filter="url(#g8)" opacity=".8">
+      <circle cx="-42" cy="-146" r="31" fill="#E0B26B"/><circle cx="42" cy="-146" r="31" fill="#E0B26B"/>
+    </g>
+    <circle cx="-42" cy="-146" r="29" fill="url(#eye)"/><circle cx="42" cy="-146" r="29" fill="url(#eye)"/>
+    <circle cx="-42" cy="-146" r="12" fill="#241C36"/><circle cx="42" cy="-146" r="12" fill="#241C36"/>
+    <path fill="#3A2F52" d="M0,-136 L-13,-106 L13,-106 Z"/>
+    <path fill="#2E2542" opacity=".3" d="M-72,-92 C-46,-70 -18,-58 0,-56 C18,-58 46,-70 72,-92
+      C64,-40 34,-6 0,-4 C-34,-6 -64,-40 -72,-92 Z"/>
+    <path fill="url(#owl)" d="M-34,4 h20 v14 h-20 Z M14,4 h20 v14 h-20 Z"/>
   </g>
+ </g>
 </g>
+
+<path d="M0,0 H1024 V318 C700,424 324,424 0,318 Z" fill="url(#gl)"/>
+<rect x="0" y="0" width="1024" height="190" fill="url(#rim)" opacity=".2"/>
 </svg>
