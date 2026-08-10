@@ -394,29 +394,32 @@
   .exm{font-family:var(--mono);font-size:10.5px;color:var(--gold)}
   .exg{display:flex;flex-wrap:wrap;gap:5px}
   .w3{flex:none;display:block}
-  .animsvg{width:76px;height:95px;background:#141519;border-radius:11px;border:1px solid var(--line)}
+  .animsvg{width:76px;height:95px;background:#E7E7E4;border-radius:11px;
+    border:1px solid rgba(0,0,0,.14);overflow:hidden}
   /* 一覧の小さい図では見出しが潰れて読めないので出さない */
   .exv:not(.big) .w3 .lab{display:none}
   .bodysvg{width:60px;height:75px}
   /* 詳細画面。動きの図と人体図はすべて同じ大きさの枠にそろえる */
   .exv.big{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
   .exv.big .w3{flex:0 1 calc(50% - 4px);min-width:118px;max-width:190px;
-    width:auto;height:auto;aspect-ratio:240/300;
-    background:#141519;border-radius:11px;border:1px solid var(--line)}
+    width:auto;height:auto;aspect-ratio:240/300;overflow:hidden;
+    background:#E7E7E4;border-radius:11px;border:1px solid rgba(0,0,0,.14)}
   /* 3D 風の塗り分け。灰色の筋肉を 1 つずつ描き、効く筋肉だけ赤く光らせる。
      塗り（グラデーション）は左右で光の向きが違うので JS 側で指定する */
   .w3 .sk{fill:url(#wgBody)}                  /* 筋肉の隙間に見える下地 */
   .w3 .hd{fill:url(#wgHead)}
-  .w3 .sh{fill:#D3D8E2;opacity:.45}           /* 頭のハイライト */
-  .w3 .ln{stroke:#111216;stroke-width:1.1;fill:none;opacity:.6;stroke-linecap:round}
-  .w3 .mm,.w3 .m1,.w3 .m2{stroke:#191A1F;stroke-width:.45;stroke-opacity:.32;
+  .w3 .sh{fill:#E4E6E0;opacity:.28}           /* 頭のハイライト */
+  .w3 .ln{stroke:#5C5F58;stroke-width:.9;fill:none;opacity:.45;stroke-linecap:round}
+  /* 筋肉の境目は硬い線ではなく、やわらかい影として見せる */
+  .w3 .mm,.w3 .m1,.w3 .m2{stroke:#5F625B;stroke-width:.4;stroke-opacity:.3;
     stroke-linejoin:round}
-  .w3 .fb{stroke:#101116;stroke-width:.42;fill:none;opacity:.3;stroke-linecap:round}
-  .w3 .m2{opacity:.5}                         /* 補助的に効く */
+  .w3 .m1,.w3 .m2{stroke:none}
+  .w3 .m2{opacity:.32}
+  .w3 .fb{stroke:#5C5F58;stroke-width:.4;fill:none;opacity:.28;stroke-linecap:round}
   .w3 .far{opacity:.55}                       /* 横向きのときの奥側の手足 */
   .w3 .ir rect{fill:url(#wgIron)}             /* ダンベル */
-  .w3 .bn rect,.w3 .bn path{fill:url(#wgBench);stroke:#000;stroke-width:.8;opacity:.9}
-  .w3 .lab{fill:var(--faint);font-size:15px;font-family:var(--mono)}
+  .w3 .bn rect,.w3 .bn path{fill:url(#wgBench);stroke:#5F625B;stroke-width:.7;stroke-opacity:.5}
+  .w3 .lab{fill:#6B6E67;font-size:15px;font-family:var(--mono)}
   .steps{margin:0;padding-left:20px;color:var(--dim);font-size:13px;line-height:1.85}
   .steps li{margin-bottom:4px}
   .steps li::marker{color:var(--gold);font-family:var(--mono);font-size:11px}

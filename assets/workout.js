@@ -277,11 +277,12 @@ window.Workout = (function () {
   function one(s, l, glow, right, flip) {
     var g = (l === 1 || l === 2 ? 'wgRed' : 'wgMus') + (right ? 'R' : '');
     var t = flip ? ' transform="scale(-1,1)"' : '';
+    // 効く筋肉はぼかして「にじみ」にする（添付写真と同じ見え方。輪郭は出さない）
+    var f = l === 1 ? ' filter="url(#wgGlow)"' : l === 2 ? ' filter="url(#wgGlow2)"' : '';
     return '<path class="' + (l === 1 ? 'm1' : l === 2 ? 'm2' : 'mm') + '" d="' + s.d +
-      '" fill="url(#' + g + ')"' + t +
-      ((l === 1 && glow) ? ' filter="url(#wgGlow)"' : '') + '/>' +
-      // 筋繊維の流れ（これが入ると一気に「筋肉」に見える）
-      (s.f ? '<path class="fb" d="' + s.f + '"' + t + '/>' : '');
+      '" fill="url(#' + g + ')"' + t + f + '/>' +
+      // 筋繊維の流れ（赤くにじんだ所には引かない）
+      (s.f && !l ? '<path class="fb" d="' + s.f + '"' + t + '/>' : '');
   }
 
   // ---- 体のパーツ -----------------------------------------------------------
@@ -302,15 +303,19 @@ window.Workout = (function () {
   /* 頭。首の胸鎖乳突筋と顎の陰で、のっぺりした球にならないようにする。 */
   function head(view) {
     var y = G.headY, r = G.headR;
-    return '<path class="sk" d="M-8,-74 C-8,-80 -7.5,-86 -7,-90 L7,-90 C7.5,-86 8,-80 8,-74 Z"/>' +
+    return '<path class="sk" d="M-8.5,-74 C-8.5,-80 -8,-86 -7.5,-90 L7.5,-90 C8,-86 8.5,-80 8.5,-74 Z"/>' +
       '<path class="mm" fill="url(#wgMus)" d="M-6.5,-76 C-6,-82 -5.5,-86 -5,-89 L-1,-89 ' +
       'C-1.5,-85 -2,-80 -2.5,-76 Z"/>' +
       '<path class="mm" fill="url(#wgMusR)" d="M6.5,-76 C6,-82 5.5,-86 5,-89 L1,-89 ' +
       'C1.5,-85 2,-80 2.5,-76 Z"/>' +
-      '<ellipse class="hd" cx="0" cy="' + y + '" rx="' + (r - 1.5) + '" ry="' + r + '"/>' +
-      (view === 'back'
-        ? '<path class="ln" d="M0,' + (y + r - 2) + ' L0,' + (y - r + 5) + '"/>'
-        : '<ellipse class="sh" cx="-4" cy="' + (y - 4) + '" rx="3.4" ry="4.4"/>');
+      // 頭は卵形＋顎（のっぺりした球にしない）
+      '<path class="hd" d="M0,' + (y - r - 1) + ' C' + (r - 1) + ',' + (y - r - 1) + ' ' +
+        (r + 0.5) + ',' + (y - r + 6) + ' ' + (r + 0.5) + ',' + (y - 1) +
+        ' C' + (r + 0.5) + ',' + (y + 6) + ' ' + (r - 4) + ',' + (y + r - 2) + ' 0,' + (y + r - 1) +
+        ' C' + (4 - r) + ',' + (y + r - 2) + ' ' + (-r - 0.5) + ',' + (y + 6) + ' ' +
+        (-r - 0.5) + ',' + (y - 1) +
+        ' C' + (-r - 0.5) + ',' + (y - r + 6) + ' ' + (1 - r) + ',' + (y - r - 1) + ' 0,' + (y - r - 1) + ' Z"/>' +
+      (view === 'back' ? '<path class="ln" d="M0,' + (y + r - 4) + ' L0,' + (y - r + 6) + '"/>' : '');
   }
   /* 胴。下地を敷いてから筋肉を 1 つずつ乗せ、最後に溝の線で締める。 */
   function torso(view, lv, glow, sx) {
@@ -323,10 +328,17 @@ window.Workout = (function () {
   function arm(side, sh, el, dur, view, lv, glow, hold, base, sx) {
     var cancel = side > 0 ? neg(add(add(base, sh), el)) : add(base, neg(add(sh, el)));
     var mir = side < 0;
-    var hand = '<ellipse class="sk" cx="0" cy="' + (G.fArm + 4) + '" rx="5.4" ry="6.4"/>' +
-      '<path class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" d="M-4,' + (G.fArm + 1) +
-      ' C0,' + (G.fArm - 1) + ' 4,' + (G.fArm + 1) + ' 4.4,' + (G.fArm + 5) +
-      ' C3,' + (G.fArm + 9) + ' -3,' + (G.fArm + 9) + ' -4,' + (G.fArm + 5) + ' Z"/>' +
+    var h0 = G.fArm;
+    var hand = '<path class="sk" d="M-4.6,' + (h0 + 1) + ' C-1,' + (h0 - 1.5) + ' 3,' + (h0 - 1) +
+      ' 4.6,' + (h0 + 2) + ' C5.6,' + (h0 + 5) + ' 5,' + (h0 + 9) + ' 2.5,' + (h0 + 10.5) +
+      ' C0,' + (h0 + 11.5) + ' -3,' + (h0 + 10) + ' -4.4,' + (h0 + 7) +
+      ' C-5.4,' + (h0 + 4.5) + ' -5.4,' + (h0 + 2.5) + ' -4.6,' + (h0 + 1) + ' Z"/>' +
+      '<path class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" d="M-3.6,' + (h0 + 2) +
+      ' C0,' + (h0 + 0.5) + ' 2.6,' + (h0 + 1) + ' 3.6,' + (h0 + 3.5) +
+      ' C4,' + (h0 + 6.5) + ' 3,' + (h0 + 9) + ' 1,' + (h0 + 9.5) +
+      ' C-1.5,' + (h0 + 9.5) + ' -3.4,' + (h0 + 7) + ' -3.6,' + (h0 + 2) + ' Z"/>' +
+      '<path class="ln" d="M-4.2,' + (h0 + 4) + ' C-2.5,' + (h0 + 3) + ' -1.5,' + (h0 + 4) +
+      ' -1.2,' + (h0 + 6) + '"/>' +
       (hold ? '<g transform="translate(0,' + (G.fArm + 5) + ')">' + dumbbell(cancel, dur) + '</g>' : '');
     var fore = joint(0, G.uArm, 0, el, dur,
       limb(G.fArm, 11.5, 8.5) + musc('fore', view, lv, glow, mir) + hand);
@@ -344,9 +356,15 @@ window.Workout = (function () {
         // 膝の皿
         '<ellipse class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" cx="0" cy="3" rx="5.4" ry="4.6"/>' +
         musc('shin', view, lv, glow, mir) +
-        '<path class="sk" d="M-5,' + (G.shin - 2) + ' C-6,' + (G.shin + 4) + ' -3,' + (G.shin + 8) +
-        ' 3,' + (G.shin + 8) + ' L11,' + (G.shin + 8) + ' C14,' + (G.shin + 7) + ' 14,' + (G.shin + 1) +
-        ' 10,' + G.shin + ' Z"/>'));
+        '<path class="sk" d="M-5,' + (G.shin - 2) + ' C-6.5,' + (G.shin + 4) + ' -3,' + (G.shin + 8.5) +
+        ' 3,' + (G.shin + 8.5) + ' L11.5,' + (G.shin + 8.5) + ' C14.5,' + (G.shin + 8) + ' 14.5,' + (G.shin + 1.5) +
+        ' 10,' + G.shin + ' Z"/>' +
+        '<path class="mm" fill="url(#wgMus' + (mir ? 'R' : '') + ')" d="M-3.5,' + (G.shin + 1) +
+        ' C-4.5,' + (G.shin + 4.5) + ' -2,' + (G.shin + 7.5) + ' 3,' + (G.shin + 7.5) +
+        ' L10.5,' + (G.shin + 7.5) + ' C12.5,' + (G.shin + 7) + ' 12.5,' + (G.shin + 3) +
+        ' 9,' + (G.shin + 2) + ' Z"/>' +
+        '<path class="ln" d="M6,' + (G.shin + 7.5) + ' L6.4,' + (G.shin + 4.5) +
+        ' M8.6,' + (G.shin + 7.5) + ' L9,' + (G.shin + 5) + '"/>'));
   }
 
   // ---- 姿勢 ---------------------------------------------------------------
@@ -396,10 +414,15 @@ window.Workout = (function () {
   /* ベンチ・椅子。体と同じ原点（骨盤）・同じ倍率で描くので、
    * ポーズの大きさを変えても道具が体からずれない（回転だけは掛けない）。 */
   var PROPS = {
-    seat: '<path d="M-21,-105 L27,-105 L34,25 L-15,25 Z"/>' +
-      '<rect x="-38" y="19" width="78" height="15" rx="5"/>' +
-      '<rect x="-30" y="34" width="12" height="65" rx="4"/>' +
-      '<rect x="20" y="34" width="12" height="65" rx="4"/>',
+    seat: // 背もたれ（少し後ろに倒れた板。体の陰に収まる幅にする）
+      '<path d="M-13,-98 C-13,-102 -9,-104 -4,-104 L15,-104 C21,-104 24,-101 24,-96 ' +
+      'L27,12 C27,18 24,21 19,21 L-9,21 C-14,21 -17,18 -17,12 Z"/>' +
+      // 座面
+      '<rect x="-32" y="16" width="64" height="14" rx="6"/>' +
+      // 支柱と足
+      '<rect x="-5" y="28" width="11" height="60" rx="4"/>' +
+      '<rect x="-28" y="86" width="58" height="8" rx="4"/>' +
+      '<rect x="17" y="26" width="9" height="62" rx="4"/>',
     flat: '<rect x="-117" y="28.5" width="195" height="18" rx="7"/>' +
       '<rect x="-100" y="46.5" width="13" height="66" rx="5"/>' +
       '<rect x="50" y="46.5" width="13" height="66" rx="5"/>',
@@ -457,7 +480,8 @@ window.Workout = (function () {
   }
   function svg(cls, aria, inner, floor) {
     return '<svg class="w3 ' + cls + '" viewBox="0 0 240 300" role="img" aria-label="' + aria + '">' +
-      (floor ? '<ellipse cx="120" cy="' + floor + '" rx="72" ry="11" fill="url(#wgFloor)"/>' : '') +
+      '<rect x="0" y="0" width="240" height="300" fill="url(#wgBg)"/>' +
+      (floor ? '<ellipse cx="120" cy="' + floor + '" rx="78" ry="12" fill="url(#wgFloor)"/>' : '') +
       inner + '</svg>';
   }
 
