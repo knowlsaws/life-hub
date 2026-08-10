@@ -16,6 +16,8 @@
   html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
   body,button,input,select,textarea{touch-action:manipulation}
   body{margin:0}
+  /* 筋トレの図で使う塗りの定義だけを置いた SVG。行の高さを作らないよう浮かせる */
+  .wdefs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
   .stage{min-height:100dvh;background:radial-gradient(120% 90% at 50% -10%,#16161C 0%,var(--bg) 55%,#050506 100%);
     display:flex;justify-content:center;font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased}
   .app{position:relative;overflow:hidden;width:100%;height:100dvh;
@@ -391,23 +393,25 @@
   .ext{font-size:13.5px;font-weight:500;color:var(--text)}
   .exm{font-family:var(--mono);font-size:10.5px;color:var(--gold)}
   .exg{display:flex;flex-wrap:wrap;gap:5px}
-  .bodysvg{width:46px;height:99px;flex:none}
-  .animsvg{width:58px;height:73px;flex:none;background:var(--s2);border-radius:9px;
-    border:1px solid var(--line)}
+  .w3{flex:none;display:block}
+  .animsvg{width:76px;height:95px;background:#141519;border-radius:11px;border:1px solid var(--line)}
+  .bodysvg{width:60px;height:75px}
   /* 詳細画面では大きく見せる */
-  .exv.big{justify-content:center;gap:14px;margin-bottom:10px}
-  .exv.big .bodysvg{width:104px;height:224px}
-  .exv.big .animsvg{width:150px;height:188px}
-  /* 体の下地はくすませ、対象の筋肉だけを赤で浮かせる */
-  .bodysvg .silh *{fill:#2A2A33;stroke:var(--line2);stroke-width:1}
-  .bodysvg .m1{fill:#D2483A;opacity:.95}      /* 主に効く */
-  .bodysvg .m2{fill:#D2483A;opacity:.38}      /* 補助的に効く */
-  .bodysvg .vlab{fill:var(--faint);font-size:15px;font-family:var(--mono)}
-  .animsvg .bd{stroke:var(--plat);stroke-width:5;stroke-linecap:round;fill:none}
-  .animsvg .hd{fill:var(--plat)}
-  .animsvg .db rect{fill:var(--gold)}
-  .animsvg .grd{stroke:var(--line2);stroke-width:2}
-  .animsvg .bench{fill:var(--s3);stroke:var(--line2);stroke-width:1}
+  .exv.big{justify-content:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .exv.big .animsvg{width:184px;height:230px}
+  .exv.big .bodysvg{width:132px;height:165px;background:#141519;border-radius:11px;
+    border:1px solid var(--line)}
+  /* 3D 風の塗り分け。体は灰色のマネキン、効く筋肉だけ赤く光らせる */
+  .w3 .sk{fill:url(#wgBody)}
+  .w3 .hd{fill:url(#wgHead)}
+  .w3 .sh{fill:#C9CED8;opacity:.5}            /* 頭のハイライト */
+  .w3 .ln{stroke:#1B1C21;stroke-width:1.2;fill:none;opacity:.75;stroke-linecap:round}
+  .w3 .m1{fill:url(#wgRed)}                   /* 主に効く */
+  .w3 .m2{fill:url(#wgRed);opacity:.34}       /* 補助的に効く */
+  .w3 .far{opacity:.55}                       /* 横向きのときの奥側の手足 */
+  .w3 .ir rect{fill:url(#wgIron)}             /* ダンベル */
+  .w3 .bn rect,.w3 .bn path{fill:url(#wgBench);stroke:#000;stroke-width:.8;opacity:.9}
+  .w3 .lab{fill:var(--faint);font-size:15px;font-family:var(--mono)}
   .steps{margin:0;padding-left:20px;color:var(--dim);font-size:13px;line-height:1.85}
   .steps li{margin-bottom:4px}
   .steps li::marker{color:var(--gold);font-family:var(--mono);font-size:11px}

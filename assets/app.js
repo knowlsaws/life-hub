@@ -1042,8 +1042,7 @@ function latestWeight(){
 }
 function exCard(e){
   return '<button class="exc" data-wk="'+esc(e.id)+'">'+
-    '<span class="exv">'+Workout.viewsFor(e).map(function(v){
-      return Workout.bodySVG(v,e.p,e.s)}).join('')+Workout.moveSVG(e.move)+'</span>'+
+    '<span class="exv">'+Workout.moveSVG(e.move,e.p,e.s,Workout.viewsFor(e)[0],0)+'</span>'+
     '<span class="exb"><span class="ext">'+esc(e.n)+'</span>'+
     '<span class="exm">'+esc(e.sets)+'</span>'+
     '<span class="exg">'+e.p.map(function(m){
@@ -1115,8 +1114,8 @@ function showWorkout(id){
     e.s.map(function(m){return '<span class="tag">'+esc(Workout.mName(m))+'</span>'}).join('')+'</div>';
   // 効く場所（赤）と動き
   h+='<div class="card"><h4>効く場所と動き</h4><div class="exv big">'+
-    Workout.viewsFor(e).map(function(v){return Workout.bodySVG(v,e.p,e.s)}).join('')+
-    Workout.moveSVG(e.move)+'</div>'+
+    Workout.moveSVG(e.move,e.p,e.s,Workout.viewsFor(e)[0])+
+    Workout.viewsFor(e).map(function(v){return Workout.bodySVG(v,e.p,e.s)}).join('')+'</div>'+
     '<div class="kv"><span class="k">主に効く</span><span class="v" style="color:var(--ember)">'+
       esc(e.p.map(Workout.mName).join('・'))+'</span></div>'+
     (e.s.length?'<div class="kv"><span class="k">補助的に効く</span><span class="v">'+

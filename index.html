@@ -5,9 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0A0C">
 <title>LIFE</title>
-<link rel="stylesheet" href="assets/app.css?v=dev725126">
+<link rel="stylesheet" href="assets/app.css?v=dev725127">
 </head>
 <body>
+<!-- 筋トレの 3D 風イラストで使う塗り（グラデーションと発光）。
+     図をいくつ描いても定義は 1 組で済むよう、ここに置いて id で参照する。 -->
+<svg class="wdefs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <linearGradient id="wgBody" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#26272D"/><stop offset=".16" stop-color="#55585F"/>
+    <stop offset=".38" stop-color="#9EA3AD"/><stop offset=".56" stop-color="#7B7F88"/>
+    <stop offset=".84" stop-color="#3D3F46"/><stop offset="1" stop-color="#212227"/>
+  </linearGradient>
+  <radialGradient id="wgHead" cx=".36" cy=".3" r=".82">
+    <stop offset="0" stop-color="#B4B9C3"/><stop offset=".5" stop-color="#7A7E87"/>
+    <stop offset="1" stop-color="#2A2C32"/>
+  </radialGradient>
+  <linearGradient id="wgRed" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#7E1A0E"/><stop offset=".2" stop-color="#D33A22"/>
+    <stop offset=".42" stop-color="#FF7A55"/><stop offset=".62" stop-color="#E8452A"/>
+    <stop offset="1" stop-color="#6E170C"/>
+  </linearGradient>
+  <linearGradient id="wgIron" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#9DA2AC"/><stop offset=".45" stop-color="#5A5E67"/>
+    <stop offset="1" stop-color="#2C2E34"/>
+  </linearGradient>
+  <linearGradient id="wgBench" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3A3D45"/><stop offset="1" stop-color="#1E1F24"/>
+  </linearGradient>
+  <radialGradient id="wgFloor" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="wgGlow" x="-70%" y="-70%" width="240%" height="240%">
+    <feGaussianBlur stdDeviation="3.2" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs></svg>
 <div class="stage">
   <div class="app" id="app">
     <div class="hint" aria-hidden="true"></div>
@@ -50,11 +82,11 @@
     <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
   </div>
 </div>
-<script src="assets/github.js?v=dev725126"></script>
-<script src="assets/places.js?v=dev725126"></script>
-<script src="assets/nearby.js?v=dev725126"></script>
-<script src="assets/workout.js?v=dev725126"></script>
-<script src="assets/demo-data.js?v=dev725126"></script>
-<script src="assets/app.js?v=dev725126"></script>
+<script src="assets/github.js?v=dev725127"></script>
+<script src="assets/places.js?v=dev725127"></script>
+<script src="assets/nearby.js?v=dev725127"></script>
+<script src="assets/workout.js?v=dev725127"></script>
+<script src="assets/demo-data.js?v=dev725127"></script>
+<script src="assets/app.js?v=dev725127"></script>
 </body>
 </html>

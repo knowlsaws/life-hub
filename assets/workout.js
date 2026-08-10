@@ -33,193 +33,297 @@ window.Workout = (function () {
     };
   }
 
-  // ---- 筋肉の図 -----------------------------------------------------------
-  /* 右半身だけ定義し、左は反転して使う（sym:1 は中央にある筋肉で反転しない）。
-   * 名前は表示にも使う。 */
+  // ---- 3D 風の人体イラスト -------------------------------------------------
+  /* 灰色のマネキンを、パーツごとに筒状のグラデーションで塗って立体的に見せる。
+   * 効く筋肉だけを赤いグラデーション＋発光で浮かせる（塗りの定義は index.html）。
+   *
+   * 骨格は <g> の入れ子。関節ごとに「移動する外側の <g>」と「回す内側の <g>」に
+   * 分け、内側だけを SMIL の animateTransform で往復させる。
+   * （transform 属性を直接アニメーションさせると移動が消えるため必ず分ける。
+   *   CSS の transform-box に依存しないので iOS Safari でも確実に動く。） */
+
+  // 骨格の寸法（骨盤の中心が原点。上が -y）
+  var G = {
+    shX: 31, shY: -66, uArm: 40, fArm: 36,   // 肩の位置 / 上腕 / 前腕
+    hipX: 13, hipY: 14, thigh: 46, shin: 44, // 股関節 / 太もも / すね
+    neck: -78, headY: -101, headR: 13
+  };
+
+  /* 右半身だけ定義し、左は反転して使う（sym:1 は中央 or 手足で反転しない）。
+   * seg: 描くパーツ、v: 見える面。名前は表示にも使う。 */
   var M = {
     // 前面
-    chest:    { n: '大胸筋',   v: 'front', d: 'M104,71 C117,69 130,74 136,84 C131,99 118,106 104,102 Z' },
-    delt_f:   { n: '三角筋前部', v: 'front', d: 'M133,64 C144,66 151,75 151,87 L137,84 C136,75 134,68 133,64 Z' },
-    biceps:   { n: '上腕二頭筋', v: 'front', d: 'M140,90 L151,93 L149,128 L139,125 Z' },
-    forearm:  { n: '前腕',     v: 'front', d: 'M138,146 L149,149 L147,193 L137,190 Z' },
-    abs:      { n: '腹直筋',   v: 'front', sym: 1, d: 'M88,108 L112,108 L110,170 L90,170 Z' },
-    oblique:  { n: '腹斜筋',   v: 'front', d: 'M113,112 L125,118 L121,162 L112,158 Z' },
-    quads:    { n: '大腿四頭筋', v: 'front', d: 'M104,210 L123,210 L119,288 L106,288 Z' },
-    tibialis: { n: '前脛骨筋', v: 'front', d: 'M108,304 L118,304 L115,368 L108,368 Z' },
+    chest:    { n: '大胸筋', v: 'front', seg: 'torso',
+      d: 'M3,-74 C15,-77 27,-71 32,-62 C28,-52 16,-47 4,-50 Z' },
+    delt_f:   { n: '三角筋前部', v: 'front', seg: 'arm', sym: 1,
+      d: 'M-8.5,-7 C0,-13 10,-8 11,4 C11,12 6,16 0,16 C-6,15 -9,7 -8.5,-7 Z' },
+    biceps:   { n: '上腕二頭筋', v: 'front', seg: 'arm', sym: 1,
+      d: 'M-7,9 C-1,5 6,9 7,17 C7,27 5,33 3,38 C-2,38 -7,31 -7,20 Z' },
+    forearm:  { n: '前腕', v: 'front', seg: 'fore', sym: 1,
+      d: 'M-5.5,4 C0,1 6,4 6,12 C6,22 4,29 2,33 C-2,33 -5.5,27 -5.5,16 Z' },
+    abs:      { n: '腹直筋', v: 'front', seg: 'torso', sym: 1,
+      d: 'M-13,-44 C-6,-47 6,-47 13,-44 C14,-30 13,-14 12,-4 C5,-1 -5,-1 -12,-4 C-13,-14 -14,-30 -13,-44 Z' },
+    oblique:  { n: '腹斜筋', v: 'front', seg: 'torso',
+      d: 'M13,-46 C20,-44 25,-38 26,-30 C26,-18 22,-9 16,-3 L12,-6 C13,-20 14,-34 13,-46 Z' },
+    quads:    { n: '大腿四頭筋', v: 'front', seg: 'thigh', sym: 1,
+      d: 'M-9,3 C-2,0 8,3 10,13 C10,27 7,38 4,45 C-1,46 -8,38 -9,25 Z' },
+    tibialis: { n: '前脛骨筋', v: 'front', seg: 'shin', sym: 1,
+      d: 'M-4,4 C0,2 5,5 5,14 C5,25 3,31 1,36 C-2,36 -4,29 -4,18 Z' },
     // 背面
-    traps:    { n: '僧帽筋',   v: 'back', sym: 1, d: 'M84,58 L116,58 L129,82 L100,97 L71,82 Z' },
-    lats:     { n: '広背筋',   v: 'back', d: 'M102,98 L129,86 L135,122 L118,152 L102,142 Z' },
-    delt_r:   { n: '三角筋後部', v: 'back', d: 'M133,64 C144,66 151,75 151,87 L137,84 C136,75 134,68 133,64 Z' },
-    triceps:  { n: '上腕三頭筋', v: 'back', d: 'M140,90 L151,93 L149,128 L139,125 Z' },
-    forearm_b:{ n: '前腕',     v: 'back', d: 'M138,146 L149,149 L147,193 L137,190 Z' },
-    erector:  { n: '脊柱起立筋', v: 'back', sym: 1, d: 'M92,100 L108,100 L106,176 L94,176 Z' },
-    glutes:   { n: '大殿筋',   v: 'back', d: 'M102,180 L127,180 L125,213 L102,213 Z' },
-    hams:     { n: 'ハムストリング', v: 'back', d: 'M104,215 L123,215 L119,290 L106,290 Z' },
-    calves:   { n: 'ふくらはぎ', v: 'back', d: 'M106,300 L120,300 L116,362 L108,362 Z' }
+    traps:    { n: '僧帽筋', v: 'back', seg: 'torso',
+      d: 'M2,-90 C14,-86 26,-80 33,-69 C24,-64 12,-60 2,-57 Z' },
+    lats:     { n: '広背筋', v: 'back', seg: 'torso',
+      d: 'M4,-64 C16,-62 28,-56 32,-48 C31,-38 24,-28 14,-21 L5,-25 C7,-40 6,-52 4,-64 Z' },
+    delt_r:   { n: '三角筋後部', v: 'back', seg: 'arm', sym: 1,
+      d: 'M-8.5,-7 C0,-13 10,-8 11,4 C11,12 6,16 0,16 C-6,15 -9,7 -8.5,-7 Z' },
+    triceps:  { n: '上腕三頭筋', v: 'back', seg: 'arm', sym: 1,
+      d: 'M-7,9 C-1,5 6,9 7,17 C7,27 5,33 3,38 C-2,38 -7,31 -7,20 Z' },
+    forearm_b:{ n: '前腕', v: 'back', seg: 'fore', sym: 1,
+      d: 'M-5.5,4 C0,1 6,4 6,12 C6,22 4,29 2,33 C-2,33 -5.5,27 -5.5,16 Z' },
+    erector:  { n: '脊柱起立筋', v: 'back', seg: 'torso', sym: 1,
+      d: 'M-9,-58 C-4,-61 4,-61 9,-58 L8,-8 C3,-5 -3,-5 -8,-8 Z' },
+    glutes:   { n: '大殿筋', v: 'back', seg: 'pelvis',
+      d: 'M2,-1 C12,-3 22,3 23,10 C22,17 14,21 4,19 C3,12 2,6 2,-1 Z' },
+    hams:     { n: 'ハムストリング', v: 'back', seg: 'thigh', sym: 1,
+      d: 'M-9,4 C-2,1 8,4 9,14 C9,28 6,38 3,44 C-2,45 -9,37 -9,24 Z' },
+    calves:   { n: 'ふくらはぎ', v: 'back', seg: 'shin', sym: 1,
+      d: 'M-7,2 C-1,0 6,3 7,12 C7,23 4,30 2,35 C-2,35 -7,28 -7,16 Z' }
   };
   function mName(id) { return (M[id] || {}).n || id; }
 
-  /* 体のシルエット（筋肉を乗せる下地）。前後で共通。 */
-  var SILHOUETTE =
-    '<circle cx="100" cy="28" r="18"/>' +
-    '<path d="M92,44 h16 v11 h-16 Z"/>' +
-    '<path d="M100,53 C119,53 133,60 141,73 L136,122 L130,152 L127,184 L73,184 L70,152 L64,122 L59,73 C67,60 81,53 100,53 Z"/>' +
-    '<path d="M74,182 L126,182 L124,208 L76,208 Z"/>' +
-    // 脚（左右）
-    '<path d="M103,206 L125,206 L120,296 L105,296 Z"/>' +
-    '<path d="M97,206 L75,206 L80,296 L95,296 Z"/>' +
-    '<path d="M106,298 L120,298 L117,390 L107,390 Z"/>' +
-    '<path d="M94,298 L80,298 L83,390 L93,390 Z"/>' +
-    // 腕（左右）
-    '<path d="M139,70 L153,77 L150,140 L137,137 Z"/>' +
-    '<path d="M61,70 L47,77 L50,140 L63,137 Z"/>' +
-    '<path d="M137,142 L150,145 L147,199 L136,196 Z"/>' +
-    '<path d="M63,142 L50,145 L53,199 L64,196 Z"/>';
+  // ---- 図を組み立てる道具 --------------------------------------------------
+  function r2(n) { return Math.round(n * 100) / 100; }
+  function pair(v) { return (v && v.length === 2) ? v : [v, v]; }        // 角度を [開始,終了] に揃える
+  function neg(v) { v = pair(v); return [-v[0], -v[1]]; }
+  function add(a, b) { a = pair(a); b = pair(b); return [a[0] + b[0], a[1] + b[1]]; }
+  function moves(v) { v = pair(v); return v[0] !== v[1]; }
 
-  /* 対象の筋肉を赤く塗った人体図。primary=濃い赤、secondary=薄い赤。 */
-  function bodySVG(view, primary, secondary) {
-    primary = primary || []; secondary = secondary || [];
-    var parts = '';
+  var EASE = 'calcMode="spline" keyTimes="0;0.5;1" keySplines="0.42 0 0.58 1;0.42 0 0.58 1"';
+  /* 内側の <g> を回す。角度が [開始,終了] なら往復アニメーション。 */
+  function rotG(ang, dur, inner) {
+    var a = pair(ang);
+    if (!moves(a) || reduceMotion) return '<g transform="rotate(' + r2(a[0]) + ')">' + inner + '</g>';
+    return '<g><animateTransform attributeName="transform" type="rotate" values="' +
+      r2(a[0]) + ';' + r2(a[1]) + ';' + r2(a[0]) + '" dur="' + dur +
+      's" repeatCount="indefinite" ' + EASE + '/>' + inner + '</g>';
+  }
+  /* 上下に動かす（しゃがむ動作など）。 */
+  function movG(dy, dur, inner) {
+    var y = pair(dy);
+    if (!moves(y) || reduceMotion) return '<g transform="translate(0,' + r2(y[0]) + ')">' + inner + '</g>';
+    return '<g><animateTransform attributeName="transform" type="translate" values="0 ' +
+      r2(y[0]) + ';0 ' + r2(y[1]) + ';0 ' + r2(y[0]) + '" dur="' + dur +
+      's" repeatCount="indefinite" ' + EASE + '/>' + inner + '</g>';
+  }
+  /* 関節: 外側の <g> で位置（と左右反転）を決め、内側の <g> だけを回す。 */
+  function joint(x, y, mirror, ang, dur, inner) {
+    return '<g transform="translate(' + r2(x) + ',' + r2(y) + ')' + (mirror ? ' scale(-1,1)' : '') +
+      '">' + rotG(ang, dur, inner) + '</g>';
+  }
+
+  /* 先細りの筒（腕・脚）。両端を丸め、付け根には関節の球を重ねて継ぎ目を隠す。 */
+  function taper(len, w0, w1) {
+    var a = w0 / 2, b = w1 / 2, k = b * 1.3;
+    return 'M' + (-a) + ',0 C' + (-a - 1.5) + ',' + r2(len * .42) + ' ' + (-b - 1.2) + ',' + r2(len * .72) +
+      ' ' + (-b) + ',' + len + ' C' + (-b) + ',' + r2(len + k) + ' ' + b + ',' + r2(len + k) + ' ' + b + ',' + len +
+      ' C' + (b + 1.2) + ',' + r2(len * .72) + ' ' + (a + 1.5) + ',' + r2(len * .42) + ' ' + a + ',0 Z';
+  }
+  function limb(len, w0, w1) {
+    return '<ellipse class="sk" cx="0" cy="0" rx="' + r2(w0 / 2) + '" ry="' + r2(w0 / 2 * .92) + '"/>' +
+      '<path class="sk" d="' + taper(len, w0, w1) + '"/>';
+  }
+  function sk(d) { return '<path class="sk" d="' + d + '"/>'; }
+
+  /* そのパーツに乗る筋肉を赤く塗る。lv: 1=主に効く（発光）/ 2=補助 */
+  function musc(seg, view, lv, glow) {
+    var o = '';
     Object.keys(M).forEach(function (id) {
       var m = M[id];
-      if (m.v !== view) return;
-      var lv = primary.indexOf(id) > -1 ? 1 : (secondary.indexOf(id) > -1 ? 2 : 0);
-      if (!lv) return;
-      var cls = lv === 1 ? 'm1' : 'm2';
-      parts += '<path class="' + cls + '" d="' + m.d + '"/>';
-      if (!m.sym) parts += '<path class="' + cls + '" d="' + m.d + '" transform="translate(200,0) scale(-1,1)"/>';
+      if (m.seg !== seg || m.v !== view) return;
+      var l = lv(id); if (!l) return;
+      var f = (l === 1 && glow) ? ' filter="url(#wgGlow)"' : '';
+      var c = ' class="' + (l === 1 ? 'm1' : 'm2') + '"';
+      o += '<path' + c + ' d="' + m.d + '"' + f + '/>';
+      if (!m.sym) o += '<path' + c + ' d="' + m.d + '" transform="scale(-1,1)"' + f + '/>';
     });
-    return '<svg class="bodysvg" viewBox="0 0 200 430" role="img" aria-label="' +
-      (view === 'front' ? '前から見た体' : '後ろから見た体') + 'の図。' +
-      primary.map(mName).join('・') + 'が赤く表示されています">' +
-      '<g class="silh">' + SILHOUETTE + '</g>' + parts +
-      '<text class="vlab" x="100" y="424" text-anchor="middle">' +
-      (view === 'front' ? '前面' : '背面') + '</text></svg>';
+    return o;
   }
 
-  // ---- 動きのアニメーション ------------------------------------------------
-  /* 棒人間の関節を SMIL で往復させる。kind ごとに動かす部位と角度を決める。
-   * dur は 1 往復の秒数。 */
-  function anim(attr, from, to, dur) {
-    if (reduceMotion) return '';
-    return '<animateTransform attributeName="transform" type="' + attr[0] +
-      '" values="' + from + ';' + to + ';' + from + '" dur="' + dur +
-      's" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" ' +
-      'keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>';
+  // ---- 体のパーツ -----------------------------------------------------------
+  var TORSO = 'M-19,-78 C-27,-77 -33,-72 -34,-63 C-35,-53 -31,-44 -27,-36 ' +
+    'C-23,-29 -20,-25 -19,-18 C-19,-10 -20,-5 -21,0 L21,0 ' +
+    'C20,-5 19,-10 19,-18 C20,-25 23,-29 27,-36 C31,-44 35,-53 34,-63 ' +
+    'C33,-72 27,-77 19,-78 Z';
+  var PELVIS = 'M-21,-6 C-23,4 -21,14 -16,20 C-10,23 -5,21 0,15 ' +
+    'C5,21 10,23 16,20 C21,14 23,4 21,-6 Z';
+  var IRON =
+    '<rect x="-13" y="-2.6" width="26" height="5.2" rx="2.6"/>' +
+    '<rect x="-19" y="-8" width="7" height="16" rx="3"/>' +
+    '<rect x="12" y="-8" width="7" height="16" rx="3"/>';
+  function dumbbell(rot, dur, vert) {
+    return rotG(vert ? add(rot, 90) : rot, dur, '<g class="ir">' + IRON + '</g>');
   }
-  /* 棒人間: 頭・胴・上腕・前腕・太もも・すね。関節ごとに <g> を入れ子にして
-   * 回転させる（肩を回すと肘から先も一緒に動く）。 */
-  function figure(inner) {
-    return '<svg class="animsvg" viewBox="0 0 160 200" role="img" aria-label="動作のアニメーション">' +
-      '<line class="grd" x1="10" y1="188" x2="150" y2="188"/>' + inner + '</svg>';
+
+  function head(view) {
+    return '<path class="sk" d="M-7.5,-76 h15 v-12 h-15 Z"/>' +
+      '<ellipse class="hd" cx="0" cy="' + G.headY + '" rx="' + (G.headR - 1.5) + '" ry="' + G.headR + '"/>' +
+      (view === 'back' ? '' :
+        '<ellipse class="sh" cx="-4.5" cy="' + (G.headY - 3) + '" rx="3" ry="4"/>');
   }
-  function dumbbell(x, y) {
-    return '<g class="db"><rect x="' + (x - 9) + '" y="' + (y - 2) + '" width="18" height="4" rx="2"/>' +
-      '<rect x="' + (x - 12) + '" y="' + (y - 6) + '" width="5" height="12" rx="2"/>' +
-      '<rect x="' + (x + 7) + '" y="' + (y - 6) + '" width="5" height="12" rx="2"/></g>';
+  /* 胴。筋肉を塗ってから溝を重ね、赤くなっても筋の切れ目が見えるようにする。 */
+  function torso(view, lv, glow, sx) {
+    return '<g transform="scale(' + sx + ',1)">' + sk(TORSO) + musc('torso', view, lv, glow) +
+      (view === 'front'
+        ? '<path class="ln" d="M0,-73 L0,-49"/><path class="ln" d="M-14,-50 C-5,-45 5,-45 14,-50"/>' +
+          '<path class="ln" d="M0,-46 L0,-6 M-12,-36 h24 M-12,-24 h24 M-11,-13 h22"/>'
+        : '<path class="ln" d="M0,-74 L0,-2"/><path class="ln" d="M-17,-59 C-8,-52 8,-52 17,-59"/>' +
+          '<path class="ln" d="M-25,-46 C-16,-36 -8,-28 -3,-24 M25,-46 C16,-36 8,-28 3,-24"/>') +
+      '</g>';
   }
-  var MOVES = {
-    // 肘を曲げる（カール）
-    curl: function () {
-      return figure(
-        '<circle class="hd" cx="80" cy="26" r="11"/>' +
-        '<line class="bd" x1="80" y1="37" x2="80" y2="104"/>' +
-        '<line class="bd" x1="80" y1="104" x2="68" y2="160"/><line class="bd" x1="80" y1="104" x2="92" y2="160"/>' +
-        '<line class="bd" x1="68" y1="160" x2="66" y2="186"/><line class="bd" x1="92" y1="160" x2="94" y2="186"/>' +
-        '<line class="bd" x1="80" y1="48" x2="98" y2="86"/>' +
-        '<g>' + anim('rotate', '0 98 86', '-125 98 86', 3) +
-        '<line class="bd" x1="98" y1="86" x2="98" y2="124"/>' + dumbbell(98, 126) + '</g>');
-    },
-    // 頭上に押し上げる（ショルダープレス）
-    press: function () {
-      return figure(
-        '<circle class="hd" cx="80" cy="30" r="11"/>' +
-        '<line class="bd" x1="80" y1="41" x2="80" y2="106"/>' +
-        '<line class="bd" x1="80" y1="106" x2="68" y2="160"/><line class="bd" x1="80" y1="106" x2="92" y2="160"/>' +
-        '<line class="bd" x1="68" y1="160" x2="66" y2="186"/><line class="bd" x1="92" y1="160" x2="94" y2="186"/>' +
-        '<g>' + anim('translate', '0 0', '0 -30', 3) +
-        '<line class="bd" x1="80" y1="52" x2="104" y2="52"/><line class="bd" x1="104" y1="52" x2="104" y2="34"/>' +
-        '<line class="bd" x1="80" y1="52" x2="56" y2="52"/><line class="bd" x1="56" y1="52" x2="56" y2="34"/>' +
-        dumbbell(104, 30) + dumbbell(56, 30) + '</g>');
-    },
-    // 胸の前で押す（ベンチプレス・仰向け）
-    bench: function () {
-      return figure(
-        '<circle class="hd" cx="34" cy="120" r="10"/>' +
-        '<line class="bd" x1="44" y1="120" x2="104" y2="120"/>' +
-        '<line class="bd" x1="104" y1="120" x2="126" y2="140"/><line class="bd" x1="126" y1="140" x2="126" y2="170"/>' +
-        '<rect class="bench" x="30" y="130" width="100" height="8" rx="3"/>' +
-        '<g>' + anim('translate', '0 0', '0 -34', 3) +
-        '<line class="bd" x1="70" y1="120" x2="70" y2="86"/><line class="bd" x1="94" y1="120" x2="94" y2="86"/>' +
-        dumbbell(70, 82) + dumbbell(94, 82) + '</g>');
-    },
-    // 引く（ロウ）
-    row: function () {
-      return figure(
-        '<circle class="hd" cx="52" cy="58" r="11"/>' +
-        '<line class="bd" x1="62" y1="64" x2="104" y2="96"/>' +
-        '<line class="bd" x1="104" y1="96" x2="100" y2="150"/><line class="bd" x1="100" y1="150" x2="104" y2="186"/>' +
-        '<g>' + anim('translate', '0 0', '0 -34', 3) +
-        '<line class="bd" x1="86" y1="84" x2="86" y2="132"/>' + dumbbell(86, 136) + '</g>');
-    },
-    // 横に上げる（サイドレイズ）
-    raise: function () {
-      return figure(
-        '<circle class="hd" cx="80" cy="26" r="11"/>' +
-        '<line class="bd" x1="80" y1="37" x2="80" y2="104"/>' +
-        '<line class="bd" x1="80" y1="104" x2="68" y2="160"/><line class="bd" x1="80" y1="104" x2="92" y2="160"/>' +
-        '<line class="bd" x1="68" y1="160" x2="66" y2="186"/><line class="bd" x1="92" y1="160" x2="94" y2="186"/>' +
-        '<g>' + anim('rotate', '0 80 50', '-78 80 50', 3.4) +
-        '<line class="bd" x1="80" y1="50" x2="80" y2="96"/>' + dumbbell(80, 100) + '</g>' +
-        '<g>' + anim('rotate', '0 80 50', '78 80 50', 3.4) +
-        '<line class="bd" x1="80" y1="50" x2="80" y2="96"/>' + dumbbell(80, 100) + '</g>');
-    },
-    // しゃがむ（スクワット・ランジ）
-    squat: function () {
-      return figure(
-        '<g>' + anim('translate', '0 0', '0 26', 3.4) +
-        '<circle class="hd" cx="80" cy="26" r="11"/>' +
-        '<line class="bd" x1="80" y1="37" x2="80" y2="100"/>' +
-        '<line class="bd" x1="80" y1="52" x2="62" y2="96"/><line class="bd" x1="80" y1="52" x2="98" y2="96"/>' +
-        dumbbell(62, 100) + dumbbell(98, 100) + '</g>' +
-        '<line class="bd" x1="80" y1="100" x2="62" y2="146"/><line class="bd" x1="80" y1="100" x2="98" y2="146"/>' +
-        '<line class="bd" x1="62" y1="146" x2="66" y2="186"/><line class="bd" x1="98" y1="146" x2="94" y2="186"/>');
-    },
-    // 股関節を折る（ルーマニアンデッドリフト）
-    hinge: function () {
-      return figure(
-        '<g>' + anim('rotate', '0 80 104', '-62 80 104', 3.6) +
-        '<circle class="hd" cx="80" cy="30" r="11"/>' +
-        '<line class="bd" x1="80" y1="41" x2="80" y2="104"/>' +
-        '<line class="bd" x1="80" y1="54" x2="80" y2="96"/>' + dumbbell(80, 100) + '</g>' +
-        '<line class="bd" x1="80" y1="104" x2="70" y2="150"/><line class="bd" x1="80" y1="104" x2="90" y2="150"/>' +
-        '<line class="bd" x1="70" y1="150" x2="70" y2="186"/><line class="bd" x1="90" y1="150" x2="90" y2="186"/>');
-    },
-    // 腕を開く（フライ）
-    fly: function () {
-      return figure(
-        '<circle class="hd" cx="34" cy="120" r="10"/>' +
-        '<line class="bd" x1="44" y1="120" x2="104" y2="120"/>' +
-        '<line class="bd" x1="104" y1="120" x2="126" y2="140"/><line class="bd" x1="126" y1="140" x2="126" y2="170"/>' +
-        '<rect class="bench" x="30" y="130" width="100" height="8" rx="3"/>' +
-        '<g>' + anim('rotate', '0 82 120', '-46 82 120', 3.4) +
-        '<line class="bd" x1="82" y1="120" x2="82" y2="80"/>' + dumbbell(82, 76) + '</g>' +
-        '<g>' + anim('rotate', '0 82 120', '46 82 120', 3.4) +
-        '<line class="bd" x1="82" y1="120" x2="82" y2="80"/>' + dumbbell(82, 76) + '</g>');
-    },
-    // 肘を伸ばす（トライセプスエクステンション）
-    ext: function () {
-      return figure(
-        '<circle class="hd" cx="80" cy="30" r="11"/>' +
-        '<line class="bd" x1="80" y1="41" x2="80" y2="106"/>' +
-        '<line class="bd" x1="80" y1="106" x2="68" y2="160"/><line class="bd" x1="80" y1="106" x2="92" y2="160"/>' +
-        '<line class="bd" x1="68" y1="160" x2="66" y2="186"/><line class="bd" x1="92" y1="160" x2="94" y2="186"/>' +
-        '<line class="bd" x1="80" y1="52" x2="80" y2="22"/>' +
-        '<g>' + anim('rotate', '0 80 22', '110 80 22', 3) +
-        '<line class="bd" x1="80" y1="22" x2="80" y2="52"/>' + dumbbell(80, 56) + '</g>');
-    }
+  function arm(side, sh, el, dur, view, lv, glow, hold, base, sx) {
+    var cancel = side > 0 ? neg(add(add(base, sh), el)) : add(base, neg(add(sh, el)));
+    var hand = '<ellipse class="sk" cx="0" cy="' + (G.fArm + 4) + '" rx="5.2" ry="6.2"/>' +
+      (hold ? '<g transform="translate(0,' + (G.fArm + 5) + ')">' + dumbbell(cancel, dur) + '</g>' : '');
+    var fore = joint(0, G.uArm, 0, el, dur,
+      limb(G.fArm, 11.5, 8.5) + musc('fore', view, lv, glow) + hand);
+    return joint(side * G.shX * sx, G.shY, side < 0, sh, dur,
+      limb(G.uArm, 15, 11.5) + musc('arm', view, lv, glow) + fore);
+  }
+  function leg(side, hip, knee, fore, dur, view, lv, glow, sx) {
+    var th = G.thigh * fore;
+    return joint(side * G.hipX * sx, G.hipY, side < 0, hip, dur,
+      '<ellipse class="sk" cx="0" cy="0" rx="10.5" ry="10"/>' +
+      '<g transform="scale(1,' + fore + ')">' + sk(taper(G.thigh, 21, 14)) + musc('thigh', view, lv, glow) + '</g>' +
+      joint(0, th, 0, knee, dur,
+        limb(G.shin, 14, 9.5) + musc('shin', view, lv, glow) +
+        '<path class="sk" d="M-5,' + (G.shin - 2) + ' C-6,' + (G.shin + 4) + ' -3,' + (G.shin + 8) +
+        ' 3,' + (G.shin + 8) + ' L11,' + (G.shin + 8) + ' C14,' + (G.shin + 7) + ' 14,' + (G.shin + 1) +
+        ' 10,' + G.shin + ' Z"/>'));
+  }
+
+  // ---- 姿勢 ---------------------------------------------------------------
+  /* 角度の向き: 手足はまっすぐ下が 0、時計回りが + （画面右腕は - で外に開く）。
+   * armL / legL の角度は左右反転した内側での値なので、左右対称なら armR と同じ値。
+   * hold: 手に持つダンベル。mid = 両手で 1 個（体の中心に描く）。 */
+  var STAND = { sh: -8, el: -4, hip: 6, knee: -6 };
+  var POSE = {
+    press: { dur: 3, at: [120, 154], sc: .95, prop: 'seat', floor: 244,
+      armR: { sh: [-100, -164], el: [-76, -14] }, hold: 'both',
+      legR: { hip: 4, knee: -4, fore: .5 } },
+    curl: { dur: 2.8, at: [120, 140],
+      armR: { sh: 6, el: [0, -125] }, hold: 'both', legR: STAND },
+    raise: { dur: 3.2, at: [120, 142], sc: .88, floor: 242,
+      armR: { sh: [-8, -78], el: -14 }, hold: 'both', legR: STAND },
+    ext: { dur: 2.8, at: [120, 154], sc: .92, prop: 'seat', floor: 240,
+      armR: { sh: -178, el: [136, 8] }, hold: 'both',
+      legR: { hip: 4, knee: -4, fore: .5 } },
+    /* 横向き・寝た姿勢では左右の手足が同じ向きに動くので、
+     * 反転している分だけ armL / legL の角度を逆にする。 */
+    bench: { dur: 3, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+      armR: { sh: [-54, -88], el: [-40, -4] }, armL: { sh: [54, 88], el: [40, 4] }, hold: 'both',
+      legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
+    fly: { dur: 3.4, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+      armR: { sh: [-90, -36], el: -16 }, armL: { sh: [90, 36], el: 16 }, hold: 'both',
+      legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
+    // プルオーバーは頭の向こう側へ弧を描くので、フライとは別の動き
+    pullover: { dur: 3.4, at: [126, 146], rot: -90, sc: .84, prop: 'flat', side: .72, floor: 248,
+      armR: { sh: [-92, -136], el: -10 }, armL: { sh: [92, 136], el: 10 }, hold: 'both',
+      legR: { hip: 56, knee: 34 }, legL: { hip: -64, knee: -26 } },
+    // プランクロウ: 腕立ての姿勢で片手ずつ引く
+    plank: { dur: 3.2, at: [94, 190], rot: -68, sc: .82, side: .72, floor: 236,
+      armR: { sh: [68, 44], el: [0, -76] }, hold: 'right', armL: { sh: -68, el: 0 },
+      legR: { hip: 0, knee: 0 }, legL: { hip: -6, knee: 6 } },
+    // 前かがみになる種目は、横から見た姿（side）にしないと動きが分からない
+    row: { dur: 3, at: [150, 120], spine: -62, prop: 'row', side: .5, floor: 240,
+      armR: { sh: [62, 40], el: [4, -78] }, hold: 'right', armL: { sh: -62, el: 0 },
+      legR: { hip: 8, knee: -8 }, legL: { hip: -4, knee: 4 } },
+    squat: { dur: 3.4, at: [120, 138], dy: [0, 18], floor: 248,
+      armR: { sh: -10, el: 150 }, hold: 'chest',
+      legR: { hip: [22, 52], knee: [-22, -78] } },
+    hinge: { dur: 3.6, at: [128, 136], spine: [0, -64], side: .5,
+      armR: { sh: [-6, 58], el: -2 }, armL: { sh: [6, -58], el: 2 }, hold: 'both',
+      legR: { hip: 6, knee: -12 }, legL: { hip: -6, knee: 12 } }
   };
-  function moveSVG(kind) { return (MOVES[kind] || MOVES.curl)(); }
+
+  /* ベンチ・椅子。人の後ろに、図の座標そのままで描く。 */
+  var PROPS = {
+    seat: '<g class="bn"><path d="M100,52 L146,52 L152,176 L106,176 Z"/>' +
+      '<rect x="84" y="170" width="74" height="14" rx="5"/>' +
+      '<rect x="92" y="184" width="11" height="62" rx="4"/>' +
+      '<rect x="139" y="184" width="11" height="62" rx="4"/></g>',
+    flat: '<g class="bn"><rect x="28" y="170" width="164" height="15" rx="6"/>' +
+      '<rect x="42" y="185" width="11" height="56" rx="4"/>' +
+      '<rect x="168" y="185" width="11" height="56" rx="4"/></g>',
+    row: '<g class="bn"><rect x="22" y="190" width="98" height="14" rx="5"/>' +
+      '<rect x="32" y="204" width="10" height="32" rx="4"/>' +
+      '<rect x="100" y="204" width="10" height="32" rx="4"/></g>'
+  };
+
+  /* 体を 1 体組み立てる。pose の角度どおりに関節を並べ、効く筋肉を赤くする。
+   * side があるときは横向き（胴を side 倍に縮め、奥側の手足を暗く落とす）。 */
+  function build(pose, view, lv, glow, label) {
+    var dur = pose.dur || 3, sp = pose.spine || 0, sx = pose.side || 1;
+    var aR = pose.armR || { sh: STAND.sh, el: STAND.el };
+    var aL = pose.armL || aR;
+    var lR = pose.legR || STAND, lL = pose.legL || lR;
+    var base = add(pose.rot || 0, sp);
+    var hold = pose.hold || 'none';
+    var far = pose.side ? 'far' : 'nr';
+    var body =
+      '<g class="' + far + '">' + leg(-1, lL.hip, lL.knee, lL.fore || 1, dur, view, lv, glow, sx) + '</g>' +
+      leg(1, lR.hip, lR.knee, lR.fore || 1, dur, view, lv, glow, sx) +
+      '<g transform="translate(0,2) scale(' + sx + ',1)">' + sk(PELVIS) + musc('pelvis', view, lv, glow) + '</g>' +
+      rotG(sp, dur,
+        '<g class="' + far + '">' +
+          arm(-1, aL.sh, aL.el, dur, view, lv, glow, hold === 'both' || hold === 'left', base, sx) + '</g>' +
+        torso(view, lv, glow, sx) + head(view) +
+        arm(1, aR.sh, aR.el, dur, view, lv, glow, hold === 'both' || hold === 'right', base, sx) +
+        // 胸の前で 1 個持つ（ゴブレットスクワット）
+        (hold === 'chest' ? '<g transform="translate(0,-52)">' + dumbbell(neg(base), dur, 1) + '</g>' : ''));
+    // 両手で 1 個持つ種目は、手の高さを計算してダンベルを中心に置く
+    if (hold === 'mid') {
+      var s = pair(aR.sh), e = pair(aR.el), y = [0, 0];
+      for (var i = 0; i < 2; i++) {
+        y[i] = G.shY + G.uArm * Math.cos(s[i] * Math.PI / 180) +
+          (G.fArm + 5) * Math.cos((s[i] + e[i]) * Math.PI / 180);
+      }
+      body += movG(y, dur, '<g transform="rotate(' + (pose.midV ? 90 : 0) + ')" class="ir">' + IRON + '</g>');
+    }
+    var sc = pose.sc || 1, at = pose.at || [120, 140];
+    return (PROPS[pose.prop] || '') +
+      '<g transform="translate(' + at[0] + ',' + at[1] + ')' +
+      (pose.rot ? ' rotate(' + pose.rot + ')' : '') + (sc !== 1 ? ' scale(' + sc + ')' : '') + '">' +
+      movG(pose.dy || 0, dur, body) + '</g>' +
+      (label ? '<text class="lab" x="120" y="292" text-anchor="middle">' + label + '</text>' : '');
+  }
+
+  function levels(primary, secondary) {
+    primary = primary || []; secondary = secondary || [];
+    return function (id) {
+      return primary.indexOf(id) > -1 ? 1 : (secondary.indexOf(id) > -1 ? 2 : 0);
+    };
+  }
+  function svg(cls, aria, inner, floor) {
+    return '<svg class="w3 ' + cls + '" viewBox="0 0 240 300" role="img" aria-label="' + aria + '">' +
+      (floor ? '<ellipse cx="120" cy="' + floor + '" rx="72" ry="11" fill="url(#wgFloor)"/>' : '') +
+      inner + '</svg>';
+  }
+
+  /* 効く場所の図（立ち姿・前面/背面）。primary=濃い赤、secondary=薄い赤。 */
+  function bodySVG(view, primary, secondary, glow) {
+    var lv = levels(primary, secondary);
+    return svg('bodysvg', (view === 'front' ? '前から見た体' : '後ろから見た体') + 'の図。' +
+      (primary || []).map(mName).join('・') + 'が赤く光っています',
+      build({ dur: 3, at: [120, 140], legR: STAND, armR: { sh: STAND.sh, el: STAND.el } },
+        view, lv, glow !== 0, view === 'front' ? '前面' : '背面'), 252);
+  }
+  /* 動きの図。同じ人体を種目の姿勢にして動かし、効く筋肉を赤く光らせる。 */
+  function moveSVG(kind, primary, secondary, view, glow) {
+    var p = POSE[kind] || POSE.curl;
+    view = view === 'back' ? 'back' : 'front';
+    return svg('animsvg', '動作のアニメーション。' + (primary || []).map(mName).join('・') + 'が赤く光っています',
+      build(p, view, levels(primary, secondary), glow !== 0, ''), p.floor || 252);
+  }
 
   // ---- メニュー -----------------------------------------------------------
   /* ダンベルだけで全身を鍛えられる 12 種目。回数はヒソカ体型（筋肥大）狙いの
@@ -267,7 +371,7 @@ window.Workout = (function () {
             'もも裏が伸びたら、お尻を締めて立ち上がる'],
       tip: '「膝を曲げる」のではなく「お尻を後ろへ引く」動き。',
       warn: '背中が丸まると腰を痛める。丸まる手前が可動域の限界。' },
-    { id: 'db-pullover', part: 'back', n: 'ダンベルプルオーバー', move: 'fly',
+    { id: 'db-pullover', part: 'back', n: 'ダンベルプルオーバー', move: 'pullover',
       p: ['lats'], s: ['chest', 'triceps'],
       sets: '3セット × 10〜15回', rest: '90秒',
       how: ['仰向けで両手で1個のダンベルを持ち、胸の上に構える',
@@ -310,7 +414,7 @@ window.Workout = (function () {
     { id: 'db-tri', part: 'arm', n: 'トライセプスエクステンション', move: 'ext',
       p: ['triceps'], s: [],
       sets: '3セット × 10〜15回', rest: '90秒',
-      how: ['両手で1個のダンベルを持ち、頭の上に構える',
+      how: ['両手にダンベルを持ち、頭の上に構える',
             '肘の位置を固定したまま、頭の後ろへ下ろす',
             '肘を伸ばして戻す'],
       tip: '腕の太さの3分の2は三頭筋。腕を太くするならここが本命。',
@@ -332,7 +436,7 @@ window.Workout = (function () {
             '前ももとお尻が伸びるまで沈み、押し戻す'],
       tip: '片脚ずつなので軽いダンベルでも十分に追い込める。',
       warn: 'ふらつくときは壁に手を添えて。まず自重で練習する。' },
-    { id: 'db-plank', part: 'core', n: 'ダンベルプランクロウ', move: 'row',
+    { id: 'db-plank', part: 'core', n: 'ダンベルプランクロウ', move: 'plank',
       p: ['abs', 'oblique'], s: ['lats', 'erector'],
       sets: '3セット × 8〜10回（左右）', rest: '60秒',
       how: ['ダンベルを両手に持ち、腕立て伏せの姿勢をとる',
