@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0C">
+<title>LINE</title>
+
+<!-- ホーム画面に追加したときのアイコン。iOS はこのページを開いている状態で
+     「ホーム画面に追加」した瞬間の apple-touch-icon を読む -->
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LINE">
+<meta name="robots" content="noindex">
+
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:22px;padding:32px 24px;
+    background:radial-gradient(120% 90% at 50% -10%,#16161C 0%,#0A0A0C 55%,#050506 100%);
+    color:#ECEAE3;font-family:-apple-system,"SF Pro Text",system-ui,"Hiragino Sans",sans-serif;
+    -webkit-font-smoothing:antialiased;text-align:center}
+  img{width:132px;height:132px;border-radius:30px;display:block;
+    box-shadow:0 24px 60px -20px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.06)}
+  h1{font-size:19px;font-weight:600;margin:0;letter-spacing:.02em}
+  p{margin:0;font-size:13.5px;line-height:1.85;color:#9C978B;max-width:22em}
+  a.go{display:inline-flex;align-items:center;justify-content:center;
+    min-width:200px;padding:14px 22px;border-radius:14px;text-decoration:none;
+    font-size:15px;font-weight:600;color:#0A0A0C;background:#2ED67E}
+  ol{margin:0;padding-left:1.3em;text-align:left;font-size:13px;line-height:2;
+    color:#9C978B;max-width:24em}
+  ol b{color:#ECEAE3;font-weight:600}
+  .n{font-size:11.5px;color:#67635A;line-height:1.8;max-width:24em}
+</style>
+</head>
+<body>
+<img src="icon-512.png" alt="">
+<h1>LINE</h1>
+
+<a class="go" id="go" href="https://line.me/">LINE を開く</a>
+
+<ol id="how">
+  <li>この画面のまま、下の <b>共有ボタン</b> を押す</li>
+  <li><b>ホーム画面に追加</b> を選ぶ</li>
+  <li>名前を確認して <b>追加</b>（アイコンは上の絵になります）</li>
+</ol>
+<p class="n" id="note">追加したアイコンから開くと、そのまま LINE に移動します。
+今ホーム画面にある古いアイコンは長押しして削除してください。</p>
+
+<script>
+/* 開き先。ほかのサイト用に使い回すときは、このフォルダごと複製して
+   TARGET と icon-*.png と <title> を差し替える。 */
+var TARGET = 'https://line.me/';
+
+document.getElementById('go').href = TARGET;
+
+/* ホーム画面のアイコンから開いたとき（standalone）だけ自動で移動する。
+   Safari で見ているときに移動してしまうと「ホーム画面に追加」ができないため、
+   その場合は説明を出すだけにする。 */
+var standalone = window.navigator.standalone === true ||
+  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+if (standalone) {
+  document.getElementById('how').style.display = 'none';
+  document.getElementById('note').textContent = '移動しています…';
+  location.replace(TARGET);
+}
+</script>
+</body>
+</html>

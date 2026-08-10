@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<!-- LIFE のホーム画面アイコン。
+     壁紙（黒地に大きな球と青いふち光）に合わせて、
+     暗い地に球のふち光を置き、中央に金色の L を乗せている。
+     iOS 側で角丸に切り抜かれるので、四隅まで塗りつぶす。 -->
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2=".4" y2="1">
+    <stop offset="0" stop-color="#151A28"/><stop offset=".5" stop-color="#080A11"/>
+    <stop offset="1" stop-color="#020306"/>
+  </linearGradient>
+  <radialGradient id="sphA" cx=".38" cy=".3" r=".78">
+    <stop offset="0" stop-color="#141A2B"/><stop offset=".72" stop-color="#080B14"/>
+    <stop offset="1" stop-color="#04050A"/>
+  </radialGradient>
+  <radialGradient id="sphB" cx=".62" cy=".7" r=".78">
+    <stop offset="0" stop-color="#171529"/><stop offset=".7" stop-color="#0A0912"/>
+    <stop offset="1" stop-color="#050409"/>
+  </radialGradient>
+  <linearGradient id="rimA" x1=".1" y1="0" x2=".7" y2=".75">
+    <stop offset="0" stop-color="#BFD8FF"/><stop offset=".22" stop-color="#5B8AE8"/>
+    <stop offset=".5" stop-color="#1E3568" stop-opacity=".5"/>
+    <stop offset=".78" stop-color="#0B1024" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="rimB" x1=".85" y1=".9" x2=".2" y2=".15">
+    <stop offset="0" stop-color="#C9BEFF"/><stop offset=".25" stop-color="#6C5CC4"/>
+    <stop offset=".6" stop-color="#241E44" stop-opacity=".4"/>
+    <stop offset="1" stop-color="#0B0A18" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="gold" x1=".2" y1="0" x2=".8" y2="1">
+    <stop offset="0" stop-color="#F7E6BE"/><stop offset=".34" stop-color="#DEB876"/>
+    <stop offset=".62" stop-color="#CFA45C"/><stop offset="1" stop-color="#8E6A34"/>
+  </linearGradient>
+  <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+    <feGaussianBlur stdDeviation="26"/>
+  </filter>
+  <filter id="glowS" x="-60%" y="-60%" width="220%" height="220%">
+    <feGaussianBlur stdDeviation="10"/>
+  </filter>
+</defs>
+
+<rect width="1024" height="1024" fill="url(#bg)"/>
+
+<!-- 左上の球（紫のふち光） -->
+<g>
+  <circle cx="132" cy="96" r="330" fill="url(#sphB)"/>
+  <circle cx="132" cy="96" r="330" fill="none" stroke="url(#rimB)" stroke-width="22"
+    filter="url(#glow)" opacity=".75"/>
+  <circle cx="132" cy="96" r="330" fill="none" stroke="url(#rimB)" stroke-width="5"/>
+</g>
+
+<!-- 右下の球（青いふち光。壁紙で一番目を引く部分） -->
+<g>
+  <circle cx="836" cy="906" r="428" fill="url(#sphA)"/>
+  <circle cx="836" cy="906" r="428" fill="none" stroke="url(#rimA)" stroke-width="26"
+    filter="url(#glow)" opacity=".9"/>
+  <circle cx="836" cy="906" r="428" fill="none" stroke="url(#rimA)" stroke-width="6"/>
+</g>
+
+<!-- 中央の L（アプリのブランド色） -->
+<g transform="translate(-26,6)">
+  <path filter="url(#glowS)" opacity=".45" fill="#CFA45C"
+    d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"/>
+  <path fill="url(#gold)"
+    d="M396,300 H556 V326 H512 V664 H648 V632 H676 V714 H396 V688 H440 V326 H396 Z"/>
+</g>
+
+<!-- 上面のわずかな艶（ガラスっぽさ） -->
+<path d="M0,0 H1024 V300 C700,392 320,392 0,300 Z" fill="#FFFFFF" opacity=".035"/>
+</svg>
