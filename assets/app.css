@@ -156,9 +156,7 @@
   .act svg{width:15px;height:15px}
   .actzone{flex:none;padding:0 14px}
   .actzone:empty{display:none}
-  /* 高さ 58px は content-box で保ち、ホームバーぶんは下に足す */
-  .bottombar{flex:none;box-sizing:content-box;height:58px;display:flex;align-items:center;gap:2px;
-    padding:0 6px var(--safe-b);
+  .bottombar{flex:none;height:58px;display:flex;align-items:center;gap:2px;padding:0 6px;
     border-top:1px solid var(--line2);background:linear-gradient(180deg,#131318,#0B0B0E);position:relative;z-index:36}
   .bb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 1px;border:0;
     background:none;color:var(--dim);cursor:pointer;font-family:var(--font);font-size:8.5px;border-radius:9px;line-height:1.2}
@@ -265,7 +263,7 @@
     padding:calc(17px + var(--safe-t)) 16px 12px;
     border-bottom:1px solid var(--line);flex:none}
   .db .dt{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);flex:1}
-  .dbody{flex:1;overflow-y:auto;padding:17px 16px calc(58px + var(--safe-b) + 28px)}
+  .dbody{flex:1;overflow-y:auto;padding:17px 16px calc(58px + 28px)}
   .dtitle{font-size:19px;line-height:1.4;font-weight:500;margin:0 0 7px;text-wrap:balance}
   .dsub{font-size:11.5px;color:var(--dim);margin-bottom:13px;font-family:var(--mono)}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
