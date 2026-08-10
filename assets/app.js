@@ -10,6 +10,7 @@ var ICON={
  supra:'<path d="M3 15v-2.5L5.5 8H15l4 4.5h2V15"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4M3 15h2.7M18.3 15H21"/>',
  money:'<circle cx="12" cy="12" r="9"/><path d="M8.5 7.5 12 12l3.5-4.5M12 12v5M9.5 13.5h5M9.5 15.8h5"/>',
  fashion:'<path d="M9 3.5 12 6l3-2.5 5 2.6-1.8 4.2-1.7-.7V20H7.5v-10.4l-1.7.7L4 6.1z"/>',
+ workout:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>',
  news:'<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM17 8h3v10a2 2 0 0 1-2 2M7 9h7M7 13h5"/>',
  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
  photos:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v6M21.5 12h-6M12 21.5v-6M2.5 12h6"/>',
@@ -36,7 +37,7 @@ function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
   {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},
-  {k:'fashion',n:'ファッション'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'fashion',n:'ファッション'},{k:'workout',n:'筋トレ'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -462,6 +463,7 @@ function applyState(s){
     else if(typeof s.det==='number')showDetail(s.det);
     else if(s.det.term)showTerm(s.det.term);
     else if(s.det.nb)showNearbySpot(s.det.nb);
+    else if(s.det.wk)showWorkout(s.det.wk);
     else showEvent(s.det.ev);
   }finally{
     // ここで戻し損ねると pushHist() が無効化され、以降ずっと「戻る」が効かなくなる
@@ -536,6 +538,7 @@ function render(){
   else if(view==='essentials')r=renderEssentials();
   else if(view==='supra')r=renderSupra();
   else if(view==='fashion')r=renderFashion();
+  else if(view==='workout')r=renderWorkout();
   else if(view==='money')r=renderMoney();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
@@ -616,6 +619,13 @@ function renderHome(){
         .sort(function(a,b){return String(a.due)<String(b.due)?-1:1})[0];
       return [MONEY.entries.length?('月の残り '+fmtYen(mt.left)+(nx2?' · 次 '+esc(nx2.t):'')):'未登録',
               MONEY.balance?('貯金 '+fmtYen(MONEY.balance.amount)):'—'];
+    }
+    if(k==='workout'){
+      var wt=Workout.targets(MY_HEIGHT),wn=latestWeight();
+      return ['目標 '+(Math.round(wt.similar*10)/10).toFixed(1)+'〜'+
+                (Math.round(wt.sameBmi*10)/10).toFixed(1)+'kg'+
+                (wn?' · いま '+wn.w.toFixed(1)+'kg':''),
+              'ダンベル '+Workout.EX.length+'種目 · 週4回'];
     }
     if(k==='fashion'){
       var fb=xs.filter(function(x){return x.kind==='brief'})
@@ -1010,6 +1020,119 @@ function renderFashion(){
       briefs.slice(1).map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
   }
   return {act:'',body:h};
+}
+
+/* ---- 筋トレ --------------------------------------------------------------
+ * ダンベルだけで組んだ部位別メニュー（assets/workout.js）。
+ * 目標はヒソカ（187cm/91kg）の体格。人体図で効く場所を赤く出す。
+ */
+var MY_HEIGHT=176;   // 身長(cm)。目標体重の換算に使う
+/* 食事セクションに体重の記録があれば、いちばん新しいものを拾う */
+function latestWeight(){
+  var best=null;
+  D.forEach(function(x){
+    if(x.s!=='meal')return;
+    var kv=((x.d||{}).kv||[]).filter(function(r){return /体重/.test(r[0])})[0];
+    if(!kv)return;
+    var v=parseFloat(String(kv[1]).replace(/[^0-9.]/g,''));
+    if(!v)return;
+    if(!best||String(x.time)>best.time)best={time:String(x.time),w:v};
+  });
+  return best;
+}
+function exCard(e){
+  return '<button class="exc" data-wk="'+esc(e.id)+'">'+
+    '<span class="exv">'+Workout.viewsFor(e).map(function(v){
+      return Workout.bodySVG(v,e.p,e.s)}).join('')+Workout.moveSVG(e.move)+'</span>'+
+    '<span class="exb"><span class="ext">'+esc(e.n)+'</span>'+
+    '<span class="exm">'+esc(e.sets)+'</span>'+
+    '<span class="exg">'+e.p.map(function(m){
+      return '<span class="tag e">'+esc(Workout.mName(m))+'</span>'}).join('')+
+    e.s.slice(0,2).map(function(m){
+      return '<span class="tag">'+esc(Workout.mName(m))+'</span>'}).join('')+
+    '</span></span></button>';
+}
+function renderWorkout(){
+  var t=Workout.targets(MY_HEIGHT),now=latestWeight();
+  var lo=Math.round(t.similar*10)/10,hi=Math.round(t.sameBmi*10)/10;
+  var h='';
+  // 目標の体格
+  h+='<div class="card"><h4>目標: ヒソカの体格（'+Workout.HISOKA.h+'cm / '+Workout.HISOKA.w+'kg）</h4>'+
+    '<div class="kv"><span class="k">ヒソカの BMI</span><span class="v">'+t.bmi.toFixed(1)+'</span></div>'+
+    '<div class="kv"><span class="k">あなたの身長</span><span class="v">'+MY_HEIGHT+' cm</span></div>'+
+    '<div class="kv"><span class="k">目標体重</span><span class="v" style="color:var(--gold)">'+
+      lo.toFixed(1)+' 〜 '+hi.toFixed(1)+' kg</span></div>'+
+    (now?'<div class="kv"><span class="k">いまの体重（'+esc(now.time.slice(0,10))+'）</span><span class="v">'+
+      now.w.toFixed(1)+' kg　<b style="color:'+(now.w<lo?'var(--ember)':'var(--ok)')+'">'+
+      (now.w<lo?'あと '+(lo-now.w).toFixed(1)+' kg':'範囲内')+'</b></span></div>':'')+
+    '<p class="prose" style="font-size:12px;margin-top:8px">'+
+    '体の比率をそのまま縮めると <b>'+lo.toFixed(1)+'kg</b>、体格指数（BMI）をそろえると <b>'+hi.toFixed(1)+'kg</b>。'+
+    'ヒソカは細身ではなく厚みのある体型なので、この幅の中で<b>体脂肪率10%前後</b>を保ちながら'+
+    '増やすのが現実的な着地点です（'+lo.toFixed(1)+'kg なら除脂肪 '+t.leanAt(lo).toFixed(1)+'kg、'+
+    hi.toFixed(1)+'kg なら '+t.leanAt(hi).toFixed(1)+'kg）。'+
+    '同じ体重でも脂肪で増やすと近づかないので、体重より<b>見た目と筋量</b>を優先してください。</p></div>';
+  // 部位別メニュー
+  var cur=seg.wkpart||Workout.PARTS[0].k;
+  h+='<div class="segs" style="margin-bottom:4px">'+Workout.PARTS.map(function(p){
+    return '<button class="seg'+(cur===p.k?' on':'')+'" data-seg="wkpart:'+p.k+'">'+p.e+' '+esc(p.n)+'</button>';
+  }).join('')+'</div>';
+  var list=Workout.byPart(cur);
+  h+='<div class="sechead"><span class="n">'+esc((Workout.PARTS.filter(function(p){return p.k===cur})[0]||{}).n||'')+
+    'のメニュー</span><span class="c">'+list.length+' 種目</span></div>'+
+    '<div class="exlist">'+list.map(exCard).join('')+'</div>';
+  // 週の組み方
+  h+='<div class="sechead"><span class="n">週の組み方</span><span class="c">週4回 + 休養3日</span></div>'+
+    '<div class="card"><h4>1週間の例</h4>'+Workout.PLAN.map(function(d){
+      return '<div class="kv"><span class="k">'+esc(d.d)+'</span><span class="v">'+esc(d.n)+
+        (d.ex.length?'<span style="color:var(--faint)"> · '+d.ex.length+'種目</span>':'')+'</span></div>';
+    }).join('')+
+    '<p class="prose" style="font-size:12px;margin-top:8px">'+
+    '各部位が週2回まわってくる組み方です。1回で全部やろうとせず、'+
+    'この分割で「続けられる量」を守るほうが結果が出ます。</p></div>';
+  // 根拠
+  h+='<div class="sechead"><span class="n">メニューの根拠</span><span class="c">公的ガイドライン</span></div>'+
+    '<div class="card"><h4>守るべき原則</h4>'+Workout.RULES.map(function(r){
+      return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>';
+    }).join('')+'</div>'+
+    '<div class="card"><h4>出典</h4>'+Workout.SOURCES.map(function(s){
+      return '<a class="lnk" href="'+esc(s.to)+'" target="_blank" rel="noopener">'+ic('link')+
+        '<span class="lnk-b"><span class="lnk-t">'+esc(s.t)+'</span>'+
+        '<span class="lnk-s">'+esc(String(s.to).replace(/^https?:\/\//,''))+'</span></span></a>';
+    }).join('')+'</div>';
+  return {act:'',body:h};
+}
+function openWorkout(id){curDet={wk:id};pushHist();showWorkout(id)}
+function showWorkout(id){
+  var e=Workout.find(id);
+  if(!e){hideDetail();return}
+  dSec.textContent='筋トレ';
+  dTrash.style.display='none';dEdit.style.display='none';dDone.style.display='none';
+  var h='<h1 class="dtitle">'+esc(e.n)+'</h1>'+
+    '<div class="dsub">'+esc((Workout.PARTS.filter(function(p){return p.k===e.part})[0]||{}).n||'')+
+    ' · ダンベルのみ</div>';
+  h+='<div class="chips">'+e.p.map(function(m){
+      return '<span class="tag e">'+esc(Workout.mName(m))+'</span>'}).join('')+
+    e.s.map(function(m){return '<span class="tag">'+esc(Workout.mName(m))+'</span>'}).join('')+'</div>';
+  // 効く場所（赤）と動き
+  h+='<div class="card"><h4>効く場所と動き</h4><div class="exv big">'+
+    Workout.viewsFor(e).map(function(v){return Workout.bodySVG(v,e.p,e.s)}).join('')+
+    Workout.moveSVG(e.move)+'</div>'+
+    '<div class="kv"><span class="k">主に効く</span><span class="v" style="color:var(--ember)">'+
+      esc(e.p.map(Workout.mName).join('・'))+'</span></div>'+
+    (e.s.length?'<div class="kv"><span class="k">補助的に効く</span><span class="v">'+
+      esc(e.s.map(Workout.mName).join('・'))+'</span></div>':'')+
+    '<div class="kv"><span class="k">セット</span><span class="v">'+esc(e.sets)+'</span></div>'+
+    '<div class="kv"><span class="k">セット間の休憩</span><span class="v">'+esc(e.rest)+'</span></div></div>';
+  h+='<div class="card"><h4>やり方</h4><ol class="steps">'+e.how.map(function(x){
+      return '<li>'+esc(x)+'</li>'}).join('')+'</ol></div>';
+  h+='<div class="card"><h4>効かせるコツ</h4><p class="prose">'+esc(e.tip)+'</p></div>';
+  h+='<div class="card"><h4>注意</h4><p class="prose" style="color:var(--ember)">'+esc(e.warn)+'</p></div>';
+  h+='<div class="card"><h4>回数と追い込みの考え方</h4><p class="prose">'+
+    'ACSM 2026 のまとめでは、総量と努力度が同じなら回数の幅は結果を大きく変えません。'+
+    '限界まで追い込まなくても、<b>あと2〜3回できる所で止めれば十分</b>です。'+
+    '週あたり1筋群10セット以上・各部位を週2回が目安になります。</p></div>';
+  dBody.innerHTML=h;dBody.scrollTop=0;
+  det.classList.add('show');det.setAttribute('aria-hidden','false');
 }
 
 /* 収支記録表。今月のサマリー → 貯金の12ヶ月予測 → 支払日/給料日の一覧。 */
@@ -1958,6 +2081,8 @@ function bind(){
     });
     root.querySelectorAll('[data-addday]').forEach(function(el){el.onclick=function(){
       openForm('event',{'日付':el.getAttribute('data-addday').replace(/\//g,'-')})}});
+    root.querySelectorAll('[data-wk]').forEach(function(el){el.onclick=function(){
+      openWorkout(el.getAttribute('data-wk'))}});
     root.querySelectorAll('[data-nbcat]').forEach(function(el){el.onclick=function(){
       var k=el.getAttribute('data-nbcat');
       // 検索語がそのカテゴリーのブランド語なら、ブランド条件付きで検索する
