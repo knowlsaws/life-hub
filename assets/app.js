@@ -1074,18 +1074,20 @@ function renderSupra(){
  */
 /* 外部の画像。壊れていたら枠ごと消す。referrerpolicy はホットリンク対策
  * （参照元でブロックするサイトがあるため）。 */
+/* 外部の画像。読めなかったときは img を消して、下に敷いた印だけを残す。
+   戻り値は [中身, 画像があるか] で、枠側は無いときに .none を付ける。 */
 function extImg(u,fb){
-  return httpsOnly(u)
-    ? '<img src="'+esc(u)+'" alt="" loading="lazy" referrerpolicy="no-referrer" '+
-      'onerror="this.remove()">'+'<span class="ff">'+esc(fb||'👕')+'</span>'
-    : '<span class="ff">'+esc(fb||'👕')+'</span>';
+  var mark='<span class="ff">'+esc(fb||'👕')+'</span>';
+  if(!httpsOnly(u))return [mark+'<span class="fn">写真なし</span>',false];
+  return ['<img src="'+esc(u)+'" alt="" loading="lazy" referrerpolicy="no-referrer" '+
+    'onerror="this.parentNode.className+=\' none\';this.remove()">'+mark,true];
 }
 function httpsOnly(u){return /^https:\/\//i.test(String(u||''))?String(u):''}
 function fashionCards(list,wide,fb){
   return '<div class="fgrid'+(wide?' wide':'')+'">'+list.map(function(x){
-    var to=httpsOnly(x.to);
+    var to=httpsOnly(x.to),im=extImg(x.thumb,fb);
     return '<div class="fcard"><button class="fc" data-i="'+D.indexOf(x)+'">'+
-      '<span class="fimg">'+extImg(x.thumb,fb)+'</span>'+
+      '<span class="fimg'+(im[1]?'':' none')+'">'+im[0]+'</span>'+
       '<span class="ft">'+esc(x.t)+'</span><span class="fm">'+esc(x.m)+'</span></button>'+
       (to?'<a class="fgo" href="'+esc(to)+'" target="_blank" rel="noopener">'+
         (wide?'YouTube で見る':'ZOZOTOWN で見る')+'</a>':'')+'</div>';
@@ -1860,7 +1862,7 @@ function showDetail(i){
   // 買える商品のカード（画像 + 名前 + 購入リンク）。関連リンクより先に出す
   if(d.shop&&d.shop.length)h+='<div class="card"><h4>買えるところ</h4>'+d.shop.map(function(s){
     var to=httpsOnly(s.to);
-    return '<div class="shop">'+(httpsOnly(s.img)?'<span class="si">'+extImg(s.img,'👕')+'</span>':'')+
+    return '<div class="shop">'+(httpsOnly(s.img)?'<span class="si">'+extImg(s.img,'👕')[0]+'</span>':'')+
       '<span class="sb"><span class="st">'+esc(s.t)+'</span>'+
       (s.m?'<span class="sm">'+esc(s.m)+'</span>':'')+
       (to?'<a class="sgo" href="'+esc(to)+'" target="_blank" rel="noopener">'+

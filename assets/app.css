@@ -385,6 +385,13 @@
   .fimg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
   /* 短いクラス名は他の画面（.tile .ft など）とぶつかるので、必ず親の中に限定する */
   .fimg .ff,.si .ff{font-size:23px;color:var(--faint)}
+  /* 写真が取れなかったとき。ただの空箱に見えないよう、absent の印を置く。
+     斜めの薄い縞と「写真なし」の一言で、壊れたのではなく無いのだと分かるようにする */
+  .fimg.none{background:
+    repeating-linear-gradient(135deg,rgba(255,255,255,.022) 0 8px,transparent 8px 16px),
+    linear-gradient(150deg,#23232B,#15151A)}
+  .fimg .fn{position:absolute;left:0;right:0;bottom:9px;text-align:center;
+    font-size:9.5px;letter-spacing:.06em;color:var(--faint);opacity:.8}
   .fcard .ft{font-size:12.5px;color:var(--text);line-height:1.35;padding:0 10px;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .fcard .fm{font-size:10.5px;color:var(--dim);padding:3px 10px 0;
