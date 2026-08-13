@@ -1093,6 +1093,35 @@ function fashionCards(list,wide,fb){
         (wide?'YouTube で見る':'ZOZOTOWN で見る')+'</a>':'')+'</div>';
   }).join('')+'</div>';
 }
+/* 詳細の kv から値を1つ取り出す（「ブランド」「価格」「分類」） */
+function kvOf(x,k){
+  var r='';((x.d||{}).kv||[]).forEach(function(p){
+    if(p[0]===k&&p[1]&&p[1]!=='—')r=String(p[1])});
+  return r;
+}
+/* カードに出す価格。「¥14,300（税込、通常価格）」のような但し書きは外して
+   金額だけにする（狭い枠で途中で切れると読めないため）。全文は詳細に残る。 */
+function shortPrice(s){
+  var v=String(s||'').replace(/[（(].*$/,'').trim();
+  return v||String(s||'');
+}
+/* 注目アイテムのカード。
+   ZOZOTOWN は外部から商品写真を取れない（サーバーからも AI からも遮断される）ので、
+   写真の代わりに、分類・価格・ブランド・おすすめ理由を読ませる作りにしている。 */
+function itemCards(list){
+  return '<div class="igrid">'+list.map(function(x){
+    var to=httpsOnly(x.to),cat=kvOf(x,'分類'),brand=kvOf(x,'ブランド'),
+        price=kvOf(x,'価格')||x.tag||'',why=String((x.d||{}).body||'');
+    var sub=[brand,cat].filter(Boolean).join(' · ');
+    return '<div class="icard"><button class="ic" data-i="'+D.indexOf(x)+'">'+
+      '<span class="it">'+esc(x.t)+'</span>'+
+      (price?'<span class="ipr">'+esc(shortPrice(price))+'</span>':'')+
+      (sub?'<span class="ib2">'+esc(sub)+'</span>':'')+
+      (why?'<span class="iw">'+esc(why)+'</span>':'')+'</button>'+
+      (to?'<a class="fgo" href="'+esc(to)+'" target="_blank" rel="noopener">'+
+        'ZOZOTOWN で見る</a>':'')+'</div>';
+  }).join('')+'</div>';
+}
 function renderFashion(){
   var all=D.filter(function(x){return x.s==='fashion'&&match(x)});
   if(!all.length){
@@ -1116,7 +1145,7 @@ function renderFashion(){
   // 今買える注目アイテム
   if(items.length){
     h+='<div class="sechead"><span class="n">今買える注目アイテム</span>'+
-      '<span class="c">'+items.length+' 件</span></div>'+fashionCards(items,false,'👕');
+      '<span class="c">'+items.length+' 件</span></div>'+itemCards(items);
   }
   // トレンド
   if(trends.length){

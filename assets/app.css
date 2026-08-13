@@ -398,6 +398,25 @@
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .fcard .fgo{display:block;text-align:center;text-decoration:none;font-size:10.5px;color:var(--gold);
     padding:8px 6px;border-top:1px solid var(--line);background:var(--goldd)}
+  /* 注目アイテムのカード。ZOZOTOWN の商品写真は外から取れないので、
+     写真枠は置かず、分類・価格・ブランド・おすすめ理由を読ませる。 */
+  .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:9px;margin-bottom:6px}
+  .icard{background:var(--s1);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;display:flex;flex-direction:column;box-shadow:inset 0 1px 0 var(--hi)}
+  .ic{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:0;cursor:pointer;
+    padding:11px 12px 12px;background:none;border:0;color:inherit;
+    font-family:var(--font);text-align:left}
+  .ic .it{font-size:13px;line-height:1.4;color:var(--text);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  /* 価格は 1 行まるごと使う。「¥6,998〜¥16,280」のような値幅でも切れないように */
+  .ic .ipr{margin-top:7px;font-family:var(--mono);font-size:13.5px;color:var(--gold)}
+  .ic .ib2{margin-top:3px;font-size:10.5px;letter-spacing:.04em;color:var(--dim);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ic .iw{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
+    font-size:11px;line-height:1.6;color:var(--dim);
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .icard .fgo{display:block;text-align:center;text-decoration:none;font-size:10.5px;
+    color:var(--gold);padding:8px 6px;border-top:1px solid var(--line);background:var(--goldd)}
   /* 詳細画面の写真。ホームの .hero（今日のカード）とは別物なので名前を分ける。
      縦横比がまちまち（商品は縦長・動画サムネは横長）なので切り取らずに出す */
   .photo{width:100%;border-radius:12px;overflow:hidden;line-height:0;
@@ -507,7 +526,8 @@
     .plist button:hover{background:var(--s2)}
     .pc:hover{border-color:var(--line2);background:var(--s2)}
     .nbgo:hover{border-color:rgba(207,164,92,.45);background:var(--s2)}
-    .fcard .fgo:hover{background:rgba(207,164,92,.22)}
+    .fcard .fgo:hover,.icard .fgo:hover{background:rgba(207,164,92,.22)}
+    .icard:hover{border-color:var(--line2)}
     .exc:hover{border-color:var(--line2);background:var(--s2)}
     .trow:hover{border-color:var(--line2);background:var(--s2)}
     .tadd:hover{border-color:rgba(207,164,92,.45);color:var(--gold)}
