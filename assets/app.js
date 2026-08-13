@@ -8,6 +8,7 @@ var ICON={
  meal:'<path d="M4 3v8a3 3 0 0 0 6 0V3M7 3v18M17 3c-1.5 0-2 3-2 6s.5 5 2 5 2-2 2-5-.5-6-2-6zM17 14v7"/>',
  essentials:'<path d="M6 8h12l1 12H5L6 8z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/>',
  supra:'<path d="M3 15v-2.5L5.5 8H15l4 4.5h2V15"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4M3 15h2.7M18.3 15H21"/>',
+ travel:'<path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 12h18M12 7v13"/>',
  money:'<circle cx="12" cy="12" r="9"/><path d="M8.5 7.5 12 12l3.5-4.5M12 12v5M9.5 13.5h5M9.5 15.8h5"/>',
  fashion:'<path d="M9 3.5 12 6l3-2.5 5 2.6-1.8 4.2-1.7-.7V20H7.5v-10.4l-1.7.7L4 6.1z"/>',
  workout:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>',
@@ -37,7 +38,7 @@ function fDT(d){return fD(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
 
 var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニメ'},{k:'tv',n:'ドラマ'},
   {k:'movies',n:'映画'},{k:'meal',n:'食事'},{k:'essentials',n:'必需品'},{k:'supra',n:'スープラ'},
-  {k:'fashion',n:'ファッション'},{k:'workout',n:'筋トレ'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
+  {k:'fashion',n:'ファッション'},{k:'workout',n:'筋トレ'},{k:'travel',n:'旅行'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
@@ -179,6 +180,106 @@ function saveMoney(){
         notify('収支の保存に失敗しました。通信を確認してもう一度操作してください。',true)});
   },800);
 }
+/* ---- 旅行 ---------------------------------------------------------------
+ * 旅ごとに「0日目・1日目…」の年表を持つ。日程はユーザーが自分で足すデータなので、
+ * 収支と同じく .web/travel.json をサイトが直接読み書きする（パイプライン不要・即時反映）。
+ * 予定を 1 件登録すると inbox にも同じ内容を置き、AI が天気・おすすめ観光スポット・
+ * 移動時間・評価を ai として書き足す。
+ * AI の追記を消さないよう、保存の直前に必ずリモートの ai を取り込んでから上書きする。
+ *
+ * trips: [{id,name,dest,days:['2026/09/08',…],
+ *          items:[{id,day,s:'18:00',e:'23:00',t:'函館→札幌移動',note,ai:{…}}]}]
+ * 日付は日ごとに持つ（連続とは限らないため。例: 0日目 9/8 → 1日目 9/10） */
+var TRAVEL={trips:[]},travelTimer=null;
+function tripBy(id){var r=null;TRAVEL.trips.forEach(function(t){if(String(t.id)===String(id))r=t});return r}
+function tripItemBy(tp,iid){var r=null;(tp&&tp.items||[]).forEach(function(i){if(String(i.id)===String(iid))r=i});return r}
+function tripDate(tp,i){return (tp.days||[])[i]||''}
+/* 「0日目（9月8日 火曜日）」 */
+function tripDayLabel(tp,i){
+  var ds=tripDate(tp,i);
+  if(!ds)return i+'日目';
+  var d=new Date(String(ds).replace(/\//g,'-')+'T00:00:00');
+  if(isNaN(d))return i+'日目';
+  return i+'日目（'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+WK[d.getDay()]+'曜日）';
+}
+function tripPeriod(tp){
+  var ds=(tp.days||[]).filter(Boolean);
+  if(!ds.length)return '日程未定';
+  return ds[0]+' 〜 '+ds[ds.length-1]+'（'+ds.length+'日間）';
+}
+function tripTime(it){
+  var a=String(it.s||'').trim(),b=String(it.e||'').trim();
+  return a&&b?a+'–'+b:(a||b||'');
+}
+function tripItemCount(tp){return (tp.items||[]).length}
+/* 旅の始まりまでの日数。過ぎていれば負。日程が無ければ null */
+function tripDaysLeft(tp){
+  var ds=(tp.days||[]).filter(Boolean);
+  if(!ds.length)return null;
+  var td=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
+  return Math.round((new Date(ds[0].replace(/\//g,'-')+'T00:00:00')-td)/864e5);
+}
+/* 一覧・検索・詳細で使えるよう D の項目に落とす */
+function buildTravelItems(){
+  D=D.filter(function(x){return x.s!=='travel'});
+  TRAVEL.trips.forEach(function(tp){
+    var left=tripDaysLeft(tp);
+    D.push({s:'travel',t:tp.name,m:tripPeriod(tp)+' · 予定 '+tripItemCount(tp)+' 件',
+      time:((tp.days||[])[0]||fD(TODAY))+' 00:00',id:'trip-'+tp.id,trip:tp.id,
+      tag:left===null?'':(left>0?'あと'+left+'日':(left===0?'今日から':'終了')),
+      cls:left===0?'e':(left>0?'g':''),
+      tags:['travel','旅行',tp.name].concat(tp.dest?[tp.dest]:[])});
+    (tp.items||[]).forEach(function(it){
+      var ds=tripDate(tp,it.day);
+      D.push({s:'travel',t:it.t,m:tp.name+' · '+tripDayLabel(tp,it.day)+(tripTime(it)?' · '+tripTime(it):''),
+        time:(ds||fD(TODAY))+' '+(String(it.s||'00:00').slice(0,5)),
+        id:'trip-'+tp.id+'-'+it.id,trip:tp.id,titem:it.id,
+        tag:it.ai?'AI 調査済み':'AI が調査中',cls:it.ai?'':'g',
+        tags:['travel','旅行',tp.name,it.t]});
+    });
+  });
+}
+/* 保存。AI が書いた ai を消さないよう、リモートの内容を取り込んでから上書きする */
+function mergeRemoteTravel(remote){
+  if(!remote||!remote.trips)return;
+  var rt={};
+  remote.trips.forEach(function(t){
+    var m={};(t.items||[]).forEach(function(i){if(i&&i.ai)m[String(i.id)]=i});
+    rt[String(t.id)]=m;
+  });
+  TRAVEL.trips.forEach(function(t){
+    var m=rt[String(t.id)];if(!m)return;
+    (t.items||[]).forEach(function(i){
+      var r=m[String(i.id)];
+      if(r&&r.ai&&!i.ai){i.ai=r.ai;i.aiAt=r.aiAt||'';}
+    });
+  });
+}
+function saveTravel(){
+  try{localStorage.setItem('lifehub.travel',JSON.stringify(TRAVEL))}catch(e){}
+  if(!GH.hasToken())return;
+  clearTimeout(travelTimer);
+  travelTimer=setTimeout(function(){
+    GH.getJSON('.web/travel.json').catch(function(){return null}).then(function(remote){
+      mergeRemoteTravel(remote);
+      return GH.putFile('.web/travel.json',JSON.stringify(TRAVEL,null,1)+'\n','travel: 旅程を保存 [skip ci]');
+    }).then(function(){setSync('保存しました',true);buildTravelItems()})
+      .catch(function(){setSync('保存失敗',false);
+        notify('旅程の保存に失敗しました。通信を確認してもう一度操作してください。',true)});
+  },700);
+}
+/* 予定 1 件を AI に調べてもらう（天気・観光スポット・移動時間・評価） */
+function askTravelAI(tp,it){
+  if(!GH.hasToken())return;
+  GH.pushInbox('travel',{
+    tripId:String(tp.id),itemId:String(it.id),
+    '旅行':tp.name,'行き先':tp.dest||'','日付':tripDate(tp,it.day)||'',
+    '時間':tripTime(it),'内容':it.t,'メモ':it.note||''
+  }).catch(function(){
+    notify('AI への依頼を送れませんでした。通信を確認してもう一度保存してください。',true);
+  });
+}
+
 var MANIFEST={sections:{}};
 /* 用語辞書（.web/terms.json）。全メニューの本文で既知の語をリンクにし、
  * タップで解説を出す。検索の一覧には出さない。 */
@@ -464,6 +565,8 @@ function applyState(s){
     else if(s.det.term)showTerm(s.det.term);
     else if(s.det.nb)showNearbySpot(s.det.nb);
     else if(s.det.wk)showWorkout(s.det.wk);
+    else if(s.det.trip&&s.det.ti)showTripItem(s.det.trip,s.det.ti);
+    else if(s.det.trip)showTrip(s.det.trip);
     else showEvent(s.det.ev);
   }finally{
     // ここで戻し損ねると pushHist() が無効化され、以降ずっと「戻る」が効かなくなる
@@ -539,6 +642,7 @@ function render(){
   else if(view==='supra')r=renderSupra();
   else if(view==='fashion')r=renderFashion();
   else if(view==='workout')r=renderWorkout();
+  else if(view==='travel')r=renderTravel();
   else if(view==='money')r=renderMoney();
   else if(view==='nearby')r=renderNearby();
   actzone.innerHTML=r.act||'';
@@ -611,6 +715,16 @@ function renderHome(){
         if(e&&String(x.time).slice(0,10)===td)kc+=parseFloat(String(e[1]).replace(/[^0-9.]/g,''))||0;
       });
       return [kc?('今日 '+kc.toLocaleString()+' kcal'):'今日の記録なし', upd||'—'];
+    }
+    if(k==='travel'){
+      if(!TRAVEL.trips.length)return ['まだ旅行がありません','—'];
+      var tn=TRAVEL.trips.map(function(tp){return {tp:tp,l:tripDaysLeft(tp)}})
+        .filter(function(o){return o.l===null||o.l>=0})
+        .sort(function(a,b){return (a.l===null?9e9:a.l)-(b.l===null?9e9:b.l)})[0];
+      var tw=TRAVEL.trips.reduce(function(n,tp){return n+tripItemCount(tp)},0);
+      return [tn?(esc(tn.tp.name)+(tn.l>0?' まであと '+tn.l+'日':(tn.l===0?' は今日から':''))):
+                 '予定した旅は終了しました',
+              TRAVEL.trips.length+'件の旅 · 予定 '+tw+' 件'];
     }
     if(k==='money'){
       var mt=moneyMonthly();
@@ -1100,6 +1214,178 @@ function renderWorkout(){
     }).join('')+'</div>';
   return {act:'',body:h};
 }
+/* 旅行の一覧。旅ごとのカードを並べ、タップで年表を開く */
+function renderTravel(){
+  var act='<div class="actbar"><button class="act" data-form="trip">'+ic('plus')+'旅行を登録</button></div>';
+  var trips=TRAVEL.trips.filter(function(tp){
+    if(!query)return true;
+    var hay=(tp.name+' '+(tp.dest||'')+' '+(tp.items||[]).map(function(i){return i.t}).join(' ')).toLowerCase();
+    return hay.indexOf(query)>-1;
+  });
+  if(!TRAVEL.trips.length)
+    return {act:act,body:'<div class="empty">まだ旅行がありません。「旅行を登録」で旅の名前と日程を作ると、'+
+      '0日目からの年表ができます。そこに予定を足していくと、天気・おすすめ観光スポット・'+
+      '移動時間・評価を AI が調べて書き足します。</div>'};
+  if(!trips.length)
+    return {act:act,body:'<div class="empty">「'+esc(queryRaw)+'」に一致する旅行はありません</div>'};
+  // これからの旅を先に、終わった旅を後ろに
+  var sorted=trips.slice().sort(function(a,b){
+    var la=tripDaysLeft(a),lb=tripDaysLeft(b);
+    if(la===null)return 1;if(lb===null)return -1;
+    if(la>=0&&lb<0)return -1;if(la<0&&lb>=0)return 1;
+    return la>=0?la-lb:lb-la;
+  });
+  var h='<div class="sechead"><span class="n">旅行</span><span class="c">'+sorted.length+' 件</span></div>'+
+    '<div class="list">'+sorted.map(function(tp){
+      var left=tripDaysLeft(tp);
+      var badge=left===null?'':(left>0?'<span class="tag g">あと'+left+'日</span>'
+        :(left===0?'<span class="tag e">今日から</span>':'<span class="tag">終了</span>'));
+      return '<button class="row" data-trip="'+esc(tp.id)+'">'+
+        '<span class="l"><span class="t">'+esc(tp.name)+'</span>'+
+        '<span class="m">'+esc(tripPeriod(tp))+(tp.dest?' · '+esc(tp.dest):'')+
+        ' · 予定 '+tripItemCount(tp)+' 件</span></span>'+
+        '<span class="r">'+badge+'</span></button>';
+    }).join('')+'</div>';
+  return {act:act,body:h};
+}
+/* 旅の年表。0日目から順に、日ごとの見出しと予定を並べる */
+function openTrip(id){curDet={trip:String(id)};pushHist();showTrip(id)}
+function showTrip(id){
+  var tp=tripBy(id);
+  if(!tp){hideDetail();return}
+  dSec.textContent='旅行';
+  dDone.style.display='none';
+  dEdit.style.display='grid';
+  dEdit.onclick=function(){
+    openForm('trip',{'旅行名':tp.name,'行き先':tp.dest||'',
+      '開始日（0日目）':String((tp.days||[])[0]||'').replace(/\//g,'-'),
+      '日数':String((tp.days||[]).length||1)},{editId:tp.id});
+  };
+  dTrash.style.display='grid';
+  dTrash.onclick=function(){
+    confirmDelete(tp.name+'（予定 '+tripItemCount(tp)+' 件）',function(){
+      TRAVEL.trips=TRAVEL.trips.filter(function(t){return String(t.id)!==String(tp.id)});
+      saveTravel();buildTravelItems();
+      curDet=null;pushHist();hideDetail();go('travel');
+    });
+  };
+  var h='<h1 class="dtitle">'+esc(tp.name)+'</h1>'+
+    '<div class="dsub">'+esc(tripPeriod(tp))+(tp.dest?' · '+esc(tp.dest):'')+'</div>';
+  var left=tripDaysLeft(tp);
+  if(left!==null)h+='<div class="chips"><span class="tag'+(left===0?' e':(left>0?' g':''))+'">'+
+    (left>0?'出発まであと '+left+' 日':(left===0?'今日から':'終了した旅'))+'</span>'+
+    '<span class="tag">予定 '+tripItemCount(tp)+' 件</span></div>';
+  h+='<div class="tl">';
+  (tp.days||[]).forEach(function(_,i){
+    var items=(tp.items||[]).filter(function(it){return +it.day===i})
+      .sort(function(a,b){return String(a.s||'')>String(b.s||'')?1:-1});
+    h+='<div class="tday"><span class="n">'+esc(tripDayLabel(tp,i))+'</span>'+
+      '<span class="c">'+(items.length?items.length+' 件':'予定なし')+'</span></div>';
+    if(items.length)h+='<div class="list">'+items.map(function(it){
+      return '<button class="trow" data-ti="'+esc(tp.id)+'|'+esc(it.id)+'">'+
+        '<span class="tt">'+esc(tripTime(it)||'—')+'</span>'+
+        '<span class="l"><span class="t">'+esc(it.t)+'</span>'+
+        (it.note?'<span class="m">'+esc(it.note)+'</span>':'')+'</span>'+
+        '<span class="r">'+(it.ai?'':'<span class="tag g">調査中</span>')+'</span></button>';
+    }).join('')+'</div>';
+    h+='<button class="tadd" data-tadd="'+esc(tp.id)+'|'+i+'">＋ この日に予定を追加</button>';
+  });
+  h+='</div>';
+  h+='<div class="card" style="margin-top:14px"><h4>AI の自動追記について</h4>'+
+    '<p class="prose" style="font-size:12.5px">予定を登録すると、その場所の天気・'+
+    'おすすめ観光スポット10選・移動時間・評価を AI が調べて、予定の詳細に書き足します。'+
+    '数分かかるので、届くまでは「調査中」と表示されます。</p></div>';
+  dBody.innerHTML=h;dBody.scrollTop=0;
+  det.classList.add('show');det.setAttribute('aria-hidden','false');
+  bindDetail();
+}
+/* 予定 1 件の詳細。AI が調べた情報をここに出す */
+function openTripItem(tid,iid){curDet={trip:String(tid),ti:String(iid)};pushHist();showTripItem(tid,iid)}
+function showTripItem(tid,iid){
+  var tp=tripBy(tid),it=tripItemBy(tp,iid);
+  if(!tp||!it){hideDetail();return}
+  dSec.textContent='旅行';
+  dDone.style.display='none';
+  dEdit.style.display='grid';
+  dEdit.onclick=function(){
+    tripItemForm(tp);
+    openForm('tripitem',{'日':tripDayLabel(tp,it.day),'開始時刻':it.s||'','終了時刻':it.e||'',
+      '内容':it.t,'メモ（任意）':it.note||''},{editId:tp.id+'|'+it.id});
+  };
+  dTrash.style.display='grid';
+  dTrash.onclick=function(){
+    confirmDelete(it.t,function(){
+      tp.items=(tp.items||[]).filter(function(x){return String(x.id)!==String(it.id)});
+      saveTravel();buildTravelItems();
+      curDet={trip:String(tp.id)};pushHist();showTrip(tp.id);
+    });
+  };
+  var ai=it.ai||null;
+  var h='<h1 class="dtitle">'+esc(it.t)+'</h1>'+
+    '<div class="dsub">'+esc(tp.name)+' · '+esc(tripDayLabel(tp,it.day))+
+    (tripTime(it)?' · '+esc(tripTime(it)):'')+'</div>';
+  if(it.note)h+='<p class="prose" style="margin-bottom:12px">'+esc(it.note)+'</p>';
+  if(!ai){
+    h+='<div class="card"><h4>AI が調査中</h4><p class="prose" style="font-size:12.5px">'+
+      'この予定の天気・おすすめ観光スポット10選・移動時間・評価を調べています。'+
+      '数分で自動的にここに書き足されます（画面はそのままで大丈夫です）。</p></div>';
+  }else{
+    var kv=[];
+    if(ai.place)kv.push(['場所',ai.place]);
+    if(ai.weather)kv.push(['天気',ai.weather]);
+    if(ai.access)kv.push(['移動・アクセス',ai.access]);
+    if(ai.duration)kv.push(['所要時間',ai.duration]);
+    if(ai.rating)kv.push(['評価',ai.rating]);
+    if(ai.cost)kv.push(['費用の目安',ai.cost]);
+    if(kv.length)h+='<div class="card"><h4>この予定の情報</h4>'+kv.map(function(r){
+      return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>';
+    }).join('')+'</div>';
+    var sp=(ai.spots||[]).filter(function(x){return x&&x.n});
+    if(sp.length)h+='<div class="sechead"><span class="n">おすすめ観光スポット</span>'+
+      '<span class="c">'+sp.length+' 件</span></div><div class="list spots">'+
+      sp.map(function(x,i){
+        return '<div class="row" style="cursor:default">'+
+          '<span class="l"><span class="t">'+(i+1)+'. '+esc(x.n)+'</span>'+
+          '<span class="m">'+esc([x.g,x.w].filter(Boolean).join(' · '))+'</span></span>'+
+          '<span class="r">'+(x.r?'<span class="star">★ '+esc(x.r)+'</span>':'')+'</span></div>';
+      }).join('')+'</div>';
+    if(ai.tips)h+='<div class="card" style="margin-top:10px"><h4>ひとこと</h4>'+
+      '<p class="prose">'+esc(ai.tips)+'</p></div>';
+    if((ai.sources||[]).length)h+='<div class="card"><h4>出典</h4>'+
+      ai.sources.filter(function(sx){return sx&&sx.u}).map(function(sx){
+        return '<a class="lnk" href="'+esc(httpsOnly(sx.u)||'#')+'" target="_blank" rel="noopener">'+ic('link')+
+          '<span class="lnk-b"><span class="lnk-t">'+esc(sx.t||sx.u)+'</span>'+
+          '<span class="lnk-s">'+esc(String(sx.u).replace(/^https?:\/\//,''))+'</span></span></a>';
+      }).join('')+'</div>';
+    if(it.aiAt)h+='<div class="footn" style="text-align:left">AI が調べた日時: '+esc(it.aiAt)+'</div>';
+  }
+  dBody.innerHTML=h;dBody.scrollTop=0;
+  det.classList.add('show');det.setAttribute('aria-hidden','false');
+  bindDetail();
+}
+/* 詳細パネルの中のボタン（年表の予定・追加）を配線する */
+function bindDetail(){
+  dBody.querySelectorAll('[data-ti]').forEach(function(el){
+    el.onclick=function(){var p=el.getAttribute('data-ti').split('|');openTripItem(p[0],p[1])};
+  });
+  dBody.querySelectorAll('[data-tadd]').forEach(function(el){
+    el.onclick=function(){
+      var p=el.getAttribute('data-tadd').split('|'),tp=tripBy(p[0]);
+      if(!tp)return;
+      tripItemForm(tp);
+      openForm('tripitem',{'日':tripDayLabel(tp,+p[1])},{tripId:tp.id});
+    };
+  });
+  dBody.querySelectorAll('[data-trip]').forEach(function(el){
+    el.onclick=function(){openTrip(el.getAttribute('data-trip'))};
+  });
+}
+/* 予定フォームの「日」の選択肢を、その旅の日数に合わせて作り直す */
+function tripItemForm(tp){
+  var opts=(tp.days||[]).map(function(_,i){return tripDayLabel(tp,i)});
+  if(!opts.length)opts=['0日目'];
+  FORMS.tripitem.f[0][2]=opts.join('|');
+}
 function openWorkout(id){curDet={wk:id};pushHist();showWorkout(id)}
 function showWorkout(id){
   var e=Workout.find(id);
@@ -1465,6 +1751,11 @@ function resolveMailEv(mailItem,l){
 function openDetail(i){curDet=i;pushHist();showDetail(i)}
 function showDetail(i){
   var x=D[i],d=x.d||{};
+  // 旅行はホームや検索から来ても年表・予定の画面へ（汎用の詳細では中身が出ない）
+  if(x.s==='travel'&&x.trip){
+    if(x.titem)showTripItem(x.trip,x.titem);else showTrip(x.trip);
+    return;
+  }
   if(x.s==='mail'){
     // 既読の永続化を nw に頼らない（一括未読の後など nw=0 でも読了は保存する）
     if(x.unread){sessionRead[stateKey(x)]=1;touchState(x,{read:1})}
@@ -1750,6 +2041,13 @@ var FORMS={
       ['開始（いつから・任意）','month','2026-08'],
       ['終了（いつまで・任意）','month','2027-03'],
       ['日付','date','']]},
+ trip:{h:'旅行を登録',s:'名前と日程を入れると、0日目からの年表を作ります',
+   f:[['旅行名','text','知床旅行'],['行き先','text','知床（北海道）'],
+      ['開始日（0日目）','date',''],
+      ['日数','select','1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21']]},
+ tripitem:{h:'予定を追加',s:'時間と内容だけで OK。天気・おすすめ観光スポット・移動時間・評価は AI が調べて追記します',
+   f:[['日','select','0日目'],['開始時刻','time',''],['終了時刻','time',''],
+      ['内容','text','ホテルチェックイン（北こぶし知床）'],['メモ（任意）','text','']]},
  moneybal:{h:'貯金残高を設定',s:'現在の貯金額。見通しグラフの起点になります',
    f:[['現在の貯金額（円）','text','1250000']]}
 };
@@ -1944,6 +2242,57 @@ function openForm(k,prefill,opts){
       if(k==='essential'&&!String(payload['製品名']||'').trim())
         return flash('製品名を入力してください');
     }
+    if(k==='trip'||k==='tripitem'){
+      // 旅行は収支と同じく、サイトが travel.json を直接保存する（即時反映）。
+      // 予定だけは AI の調査依頼として inbox にも同じ内容を置く。
+      if(k==='trip'){
+        var tName=String(payload['旅行名']||'').trim();
+        if(!tName)return flash('旅行名を入力してください');
+        var tStart=String(payload['開始日（0日目）']||'').trim();
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(tStart))return flash('開始日を選んでください');
+        var tN=Math.max(1,Math.min(21,parseInt(payload['日数'],10)||1));
+        var d0=new Date(tStart+'T00:00:00');
+        var days=[];for(var di=0;di<tN;di++)
+          days.push(fD(new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()+di)));
+        var tp0=opts.editId?tripBy(opts.editId):null;
+        if(tp0){
+          // 日数を減らしたときは、はみ出した予定を最終日に寄せる（消さない）
+          tp0.name=tName;tp0.dest=String(payload['行き先']||'').trim();
+          // 既にある日付は保つ（連続でない日程を手で直せるように）
+          tp0.days=days.map(function(d,i){return (tp0.days||[])[i]||d});
+          (tp0.items||[]).forEach(function(it){if(+it.day>tN-1)it.day=tN-1});
+        }else{
+          tp0={id:'tp'+Date.now(),name:tName,dest:String(payload['行き先']||'').trim(),
+               days:days,items:[]};
+          TRAVEL.trips.push(tp0);
+        }
+        saveTravel();buildTravelItems();
+        mask.classList.remove('show');
+        curDet={trip:String(tp0.id)};pushHist();showTrip(tp0.id);
+        return;
+      }
+      var tpx=tripBy(opts.tripId||String(opts.editId||'').split('|')[0]);
+      if(!tpx)return flash('旅行が見つかりません');
+      var iTitle=String(payload['内容']||'').trim();
+      if(!iTitle)return flash('内容を入力してください');
+      var dayIx=0;
+      (tpx.days||[]).forEach(function(_,i){if(tripDayLabel(tpx,i)===payload['日'])dayIx=i});
+      var it0=opts.editId?tripItemBy(tpx,String(opts.editId).split('|')[1]):null;
+      var changed=!it0||it0.t!==iTitle||it0.day!==dayIx||
+        (it0.s||'')!==String(payload['開始時刻']||'')||(it0.e||'')!==String(payload['終了時刻']||'');
+      if(!it0){it0={id:'ti'+Date.now()};tpx.items=(tpx.items||[]).concat([it0])}
+      it0.day=dayIx;
+      it0.s=String(payload['開始時刻']||'').trim();
+      it0.e=String(payload['終了時刻']||'').trim();
+      it0.t=iTitle;
+      it0.note=String(payload['メモ（任意）']||'').trim();
+      // 内容や日付が変わったら調べ直す（時刻だけの微調整でも天気が変わるため）
+      if(changed){delete it0.ai;delete it0.aiAt;askTravelAI(tpx,it0)}
+      saveTravel();buildTravelItems();
+      mask.classList.remove('show');
+      curDet={trip:String(tpx.id)};pushHist();showTrip(tpx.id);
+      return;
+    }
     if(k==='money'||k==='moneybal'){
       // 収支は inbox を経由せず、サイトが money.json を直接保存する（即時反映）
       if(k==='money'){
@@ -2041,6 +2390,7 @@ function bind(){
   [actzone,scroll].forEach(function(root){
     root.querySelectorAll('[data-i]').forEach(function(el){el.onclick=function(){openDetail(+el.getAttribute('data-i'))}});
     root.querySelectorAll('[data-sec]').forEach(function(el){el.onclick=function(){go(el.getAttribute('data-sec'))}});
+    root.querySelectorAll('[data-trip]').forEach(function(el){el.onclick=function(){openTrip(el.getAttribute('data-trip'))}});
     root.querySelectorAll('[data-seg]').forEach(function(el){el.onclick=function(){
       var p=el.getAttribute('data-seg').split(':');seg[p[0]]=p[1];render()}});
     root.querySelectorAll('[data-mail]').forEach(function(el){el.onclick=function(){
@@ -2345,7 +2695,8 @@ function setSync(txt,ok){
 function useDemo(){
   D=DEMO.items.slice();EV=DEMO.events.slice();DEMO_MODE=true;
   MONEY=JSON.parse(JSON.stringify(DEMO.money||{entries:[],balance:null}));
-  buildMoneyItems();
+  TRAVEL=JSON.parse(JSON.stringify(DEMO.travel||{trips:[]}));
+  buildMoneyItems();buildTravelItems();
   TERMS=DEMO.terms||{};buildTermRe();
   if(DEMO.holidays)HOL=DEMO.holidays;
   reconcileNewsStops(true);
@@ -2372,7 +2723,8 @@ function loadAll(){
       GH.getJSON('.web/state.json').catch(function(){return null}),
       GH.getJSON('.web/terms.json').catch(function(){return null}),
       GH.getJSON('.web/holidays.json').catch(function(){return null}),
-      GH.getJSON('.web/money.json').catch(function(){return null})
+      GH.getJSON('.web/money.json').catch(function(){return null}),
+      GH.getJSON('.web/travel.json').catch(function(){return null})
     ]);
   }).then(function(res){
     if(res[0]&&res[0].text)GREETING=res[0];
@@ -2387,6 +2739,10 @@ function loadAll(){
     if(res[4]&&res[4].entries)MONEY=res[4];
     else{try{MONEY=JSON.parse(localStorage.getItem('lifehub.money')||'null')||MONEY}catch(e){}}
     buildMoneyItems();
+    // travel.json はサイトと AI の両方が書く。取れない間は端末の控えで動く
+    if(res[5]&&res[5].trips)TRAVEL=res[5];
+    else{try{TRAVEL=JSON.parse(localStorage.getItem('lifehub.travel')||'null')||TRAVEL}catch(e){}}
+    buildTravelItems();
     applyUserState();
     render();updateNotice();
   });
