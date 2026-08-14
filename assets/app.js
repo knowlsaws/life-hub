@@ -1754,6 +1754,124 @@ function openGoogleKeySheet(){
 // ---- detail
 function isWork(s){return s==='anime'||s==='tv'||s==='movies'}
 function bodyHead(s){return s==='mail'?'AI 要約':s==='meal'?'AI アドバイス':isWork(s)?'あらすじ':'解説'}
+/* ---- 検索の教材ページ ------------------------------------------------------
+ * publish_search が Markdown を部品（見出し・段落・表・画像・図・クイズ）に
+ * 分解して d.doc に入れてくる。ここではそれを上から順に描くだけで、
+ * Markdown の解釈はしない。文中の飾りだけ mdInline で整える。 */
+
+/* エスケープ済みの文にだけ掛ける行内整形。**強調**・`コード`・[表示](https URL)。
+ * 先に esc() を通す前提なので、ここで生の HTML が混ざることはない。 */
+function mdInline(escaped){
+  return linkTerms(escaped
+    .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener" class="dlnk">$1</a>')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g,'$1')
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>'));
+}
+function docHTML(doc){
+  var h='',toc=[],sec=0;
+  doc.forEach(function(b){
+    if(b.h){sec++;toc.push([sec,b.h]);
+      h+='<h2 class="dsec" id="dsec'+sec+'">'+mdInline(esc(b.h))+'</h2>';return}
+    if(b.h3){h+='<h3 class="dsub3">'+mdInline(esc(b.h3))+'</h3>';return}
+    if(b.p){h+='<p class="prose dp">'+mdInline(esc(b.p))+'</p>';return}
+    if(b.ul){h+='<ul class="dlist">'+b.ul.map(function(t){
+      return '<li>'+mdInline(esc(t))+'</li>'}).join('')+'</ul>';return}
+    if(b.ol){h+='<ol class="dlist">'+b.ol.map(function(t){
+      return '<li>'+mdInline(esc(t))+'</li>'}).join('')+'</ol>';return}
+    if(b.note){h+='<div class="dnote">'+b.note.map(function(t){
+      return '<p>'+mdInline(esc(t))+'</p>'}).join('')+'</div>';return}
+    if(b.tbl){h+='<div class="tblwrap"><table class="dtbl"><thead><tr>'+
+      b.tbl.h.map(function(c){return '<th>'+mdInline(esc(c))+'</th>'}).join('')+
+      '</tr></thead><tbody>'+b.tbl.r.map(function(r){
+        return '<tr>'+r.map(function(c){return '<td>'+mdInline(esc(c))+'</td>'}).join('')+'</tr>';
+      }).join('')+'</tbody></table></div>';return}
+    if(b.img&&httpsOnly(b.img.u)){
+      h+='<figure class="dimg"><img src="'+esc(b.img.u)+'" alt="" loading="lazy" '+
+        'referrerpolicy="no-referrer" onerror="this.closest(\'figure\').remove()">'+
+        '<figcaption>'+esc(b.img.cap||'')+
+        (httpsOnly(b.img.cru)?' <a href="'+esc(b.img.cru)+'" target="_blank" rel="noopener">'+
+          esc('出典: '+(b.img.crt||'リンク'))+'</a>':'')+
+        '</figcaption></figure>';return}
+    if(b.mmd){h+='<div class="mmd" data-mmd="'+esc(b.mmd)+'">'+
+      '<span class="mmdl">図を描いています…</span></div>';return}
+    if(b.code){h+='<pre class="dcode">'+esc(b.code)+'</pre>';return}
+    if(b.quiz){h+='<div class="quiz">'+b.quiz.map(function(q,n){
+      return '<div class="qz"><div class="qq"><span class="qn">Q'+(n+1)+'</span>'+
+        mdInline(esc(q.q))+'</div>'+
+        '<button class="qa-btn" type="button">答えを見る</button>'+
+        '<div class="qa" hidden>'+mdInline(esc(q.a))+'</div></div>';
+    }).join('')+'</div>';return}
+  });
+  // 目次（見出しが3つ以上あるときだけ。タップでその章へ飛ぶ）
+  var tocH=toc.length>=3?'<nav class="dtoc"><span class="tt">目次</span>'+
+    toc.map(function(t){return '<button class="ti" data-toc="dsec'+t[0]+'">'+esc(t[1])+'</button>'})
+      .join('')+'</nav>':'';
+  return '<article class="ddoc">'+tocH+h+'</article>';
+}
+/* 教材ページの中の操作（目次・クイズ・図）を配線する */
+function bindDoc(){
+  dBody.querySelectorAll('[data-toc]').forEach(function(el){
+    el.onclick=function(){
+      var t=document.getElementById(el.getAttribute('data-toc'));
+      if(t)t.scrollIntoView({behavior:'smooth',block:'start'});
+    };
+  });
+  dBody.querySelectorAll('.qa-btn').forEach(function(el){
+    el.onclick=function(){
+      var a=el.nextElementSibling;
+      var open=a.hidden;
+      a.hidden=!open;
+      el.textContent=open?'答えを隠す':'答えを見る';
+    };
+  });
+  renderMermaid();
+}
+/* mermaid は 3.5MB あるので、図のあるページを開いたときだけ読み込む */
+var mmdState='';   // '' → loading → ready / failed
+function renderMermaid(){
+  var nodes=dBody.querySelectorAll('.mmd[data-mmd]');
+  if(!nodes.length)return;
+  if(mmdState==='ready')return drawMermaid(nodes);
+  if(mmdState==='failed')return mermaidFallback(nodes);
+  if(mmdState==='loading')return;   // 読み込み完了時に描かれる
+  mmdState='loading';
+  var s=document.createElement('script');
+  s.src='assets/mermaid.min.js';
+  s.onload=function(){
+    try{
+      window.mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',
+        themeVariables:{fontFamily:'-apple-system,sans-serif',fontSize:'13px'}});
+      mmdState='ready';
+      drawMermaid(dBody.querySelectorAll('.mmd[data-mmd]'));
+    }catch(e){mmdState='failed';mermaidFallback(dBody.querySelectorAll('.mmd[data-mmd]'))}
+  };
+  s.onerror=function(){mmdState='failed';mermaidFallback(dBody.querySelectorAll('.mmd[data-mmd]'))};
+  document.body.appendChild(s);
+}
+function drawMermaid(nodes){
+  nodes.forEach(function(el,n){
+    var code=el.getAttribute('data-mmd');
+    el.removeAttribute('data-mmd');
+    window.mermaid.render('mmdsvg'+Date.now()+'_'+n,code).then(function(r){
+      el.innerHTML=r.svg;
+      var svg=el.querySelector('svg');
+      if(svg){svg.removeAttribute('height');svg.style.maxWidth='100%'}
+    }).catch(function(){
+      // 図の文法が壊れていたら、図の代わりに原文を見せる（何も出ないよりまし）
+      el.innerHTML='<pre class="dcode">'+esc(code)+'</pre>';
+    });
+  });
+}
+function mermaidFallback(nodes){
+  nodes.forEach(function(el){
+    var code=el.getAttribute('data-mmd');
+    if(code==null)return;
+    el.removeAttribute('data-mmd');
+    el.innerHTML='<pre class="dcode">'+esc(code)+'</pre>';
+  });
+}
 /* 件名の表記ゆれを無視して突き合わせるための正規化。予定側の e.mail は
  * パイプラインが件名を個別ページのファイル名にする過程で記号（: ／ 、|【】など）を
  * 落としたり長さで末尾を切ったりするため、メール一覧の t と完全一致しない。
@@ -1878,9 +1996,11 @@ function showDetail(i){
     return '<div class="kv"><span class="k">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+'</span></div>'}).join('')+'</div>';
   if(d.graph)h+='<div class="card"><h4>'+esc(d.graphTitle||'体重推移')+'</h4>'+
     spark(d.series,d.graphUnit)+'</div>';
-  if(d.fig)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
+  if(d.fig&&!d.doc)h+='<div class="card"><h4>図解</h4><div class="fig">解説用の図（AI生成）</div>'+
     '<div class="kv" style="border-top:0"><span class="k">形式</span><span class="v">初心者向け · 画像付き</span></div></div>';
-  if(d.body)h+='<div class="card"><h4>'+bodyHead(x.s)+'</h4><p class="prose">'+linkTerms(esc(d.body))+'</p></div>';
+  if(d.body)h+='<div class="card"><h4>'+(d.doc?'3行まとめ':bodyHead(x.s))+'</h4><p class="prose">'+linkTerms(esc(d.body))+'</p></div>';
+  // 検索の教材ページ（全文）。要約カードの直後・出典や用語辞書より前に出す
+  if(d.doc)h+=docHTML(d.doc);
   if(d.cast)h+='<div class="card"><h4>キャスト（役名 / 声優）</h4>'+d.cast.map(function(c){
     return '<div class="kv"><span class="k">'+esc(c[1])+'</span><span class="v">'+esc(c[0])+'</span></div>'}).join('')+'</div>';
   if(d.eps)h+='<div class="card"><h4>各話</h4>'+d.eps.map(function(e,n){
@@ -1935,6 +2055,7 @@ function showDetail(i){
   }
   dBody.innerHTML=h;dBody.scrollTop=0;
   det.classList.add('show');det.setAttribute('aria-hidden','false');
+  if(d.doc)bindDoc();
 
   dBody.querySelectorAll('.chk').forEach(function(el){
     el.onclick=function(){
@@ -2061,7 +2182,7 @@ var FORMS={
  meal:{h:'食事を記録',s:'複数の食事をまとめて登録できます。体重は未入力なら変化なし',multi:1},
  photo:{h:'写真で登録',s:'画像をアップロードすると AI が料理・食材・栄養素を解析します',
    f:[['画像','file',''],['メモ（任意）','text','すき家で昼食']]},
- research:{h:'調べてほしい内容を登録',s:'初心者向けに画像付きで解説し、用語ページも自動生成します',
+ research:{h:'調べてほしい内容を登録',s:'AI が複数の情報源を深掘りし、図解・実例・クイズつきの教材ページを作ります（30分ほど）',
    f:[['調べたい内容','text','量子コンピュータ']]},
  essential:{h:'必需品を登録',s:'製品名だけで OK。値段・消耗頻度・購入場所・類似製品は AI が調べて記入します',
    f:[['製品名','text','例: ジレット フュージョン 替刃 8個入']]},
