@@ -282,17 +282,35 @@ function putTravel(attempt){
     }
   });
 }
-/* 予定 1 件を AI に調べてもらう（天気・観光スポット・移動時間・評価） */
+/* 予定 1 件を AI に調べてもらう（天気・観光スポット・移動時間・評価）。
+ * 送信は一度で諦めず、送れるまで端末の送信待ちに残す。以前は 1 回失敗すると
+ * 依頼ごと消え、その予定は永遠に「調査中」のまま止まっていた。 */
+var ASKQ=[],askFlushing=false;
+try{ASKQ=JSON.parse(localStorage.getItem('lifehub.travelAsk')||'[]')||[]}catch(e){}
+function persistAskQ(){try{localStorage.setItem('lifehub.travelAsk',JSON.stringify(ASKQ))}catch(e){}}
 function askTravelAI(tp,it){
-  if(!GH.hasToken())return;
-  GH.pushInbox('travel',{
-    tripId:String(tp.id),itemId:String(it.id),
+  var q={tripId:String(tp.id),itemId:String(it.id),
     '旅行':tp.name,'行き先':tp.dest||'','日付':tripDate(tp,it.day)||'',
-    '時間':tripTime(it),'内容':it.t,'メモ':it.note||''
+    '時間':tripTime(it),'内容':it.t,'メモ':it.note||''};
+  // 同じ予定の送信待ちは新しい内容で置き換える（内容が変わった古い依頼は
+  // パイプライン側でも捨てられるので、送っても無駄になる）
+  ASKQ=ASKQ.filter(function(x){return x.itemId!==q.itemId});
+  ASKQ.push(q);persistAskQ();
+  flushTravelAsk();
+}
+function flushTravelAsk(){
+  if(askFlushing||!ASKQ.length||!GH.hasToken())return;
+  askFlushing=true;
+  GH.pushInbox('travel',ASKQ[0]).then(function(){
+    ASKQ.shift();persistAskQ();askFlushing=false;
+    flushTravelAsk();
   }).catch(function(){
-    notify('AI への依頼を送れませんでした。通信を確認してもう一度保存してください。',true);
+    askFlushing=false;
+    notify('AI への依頼を送れていません。通信が戻り次第、自動で送り直します。',true);
   });
 }
+// 送り損ねた依頼の再送。アプリを開いたときと、30 秒ごとに試す
+setInterval(flushTravelAsk,30000);
 
 var MANIFEST={sections:{}};
 /* 用語辞書（.web/terms.json）。全メニューの本文で既知の語をリンクにし、
@@ -2932,6 +2950,7 @@ function loadAll(){
     else if(res[5]&&res[5].trips)TRAVEL=res[5];
     else if(localTravel&&localTravel.trips)TRAVEL=localTravel;
     buildTravelItems();
+    flushTravelAsk();   // 送り損ねた調査依頼があれば、ここで送り直す
     applyUserState();
     render();updateNotice();
   });
