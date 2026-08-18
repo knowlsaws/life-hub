@@ -257,16 +257,30 @@ function mergeRemoteTravel(remote){
 }
 function saveTravel(){
   try{localStorage.setItem('lifehub.travel',JSON.stringify(TRAVEL))}catch(e){}
+  // 「送れていない編集がある」印。サーバーに届いたら消す。登録直後にアプリを
+  // 閉じて保存が死んでも、次に開いたときこの印を見て送り直せる
+  try{localStorage.setItem('lifehub.travelDirty','1')}catch(e){}
   if(!GH.hasToken())return;
   clearTimeout(travelTimer);
-  travelTimer=setTimeout(function(){
-    GH.getJSON('.web/travel.json').catch(function(){return null}).then(function(remote){
-      mergeRemoteTravel(remote);
-      return GH.putFile('.web/travel.json',JSON.stringify(TRAVEL,null,1)+'\n','travel: 旅程を保存 [skip ci]');
-    }).then(function(){setSync('保存しました',true);buildTravelItems()})
-      .catch(function(){setSync('保存失敗',false);
-        notify('旅程の保存に失敗しました。通信を確認してもう一度操作してください。',true)});
-  },700);
+  travelTimer=setTimeout(function(){putTravel(0)},700);
+}
+/* 保存の実体。失敗しても諦めず、間隔を空けて 3 回まで押し直す */
+function putTravel(attempt){
+  GH.getJSON('.web/travel.json').catch(function(){return null}).then(function(remote){
+    mergeRemoteTravel(remote);
+    return GH.putFile('.web/travel.json',JSON.stringify(TRAVEL,null,1)+'\n','travel: 旅程を保存 [skip ci]');
+  }).then(function(){
+    try{localStorage.removeItem('lifehub.travelDirty')}catch(e){}
+    setSync('保存しました',true);buildTravelItems();
+  }).catch(function(){
+    if(attempt<3){
+      setSync('保存を再試行しています…',false);
+      travelTimer=setTimeout(function(){putTravel(attempt+1)},(attempt+1)*4000);
+    }else{
+      setSync('保存失敗',false);
+      notify('旅程の保存に失敗しました。編集は端末に残っているので、次にアプリを開いたとき自動で送り直します。',true);
+    }
+  });
 }
 /* 予定 1 件を AI に調べてもらう（天気・観光スポット・移動時間・評価） */
 function askTravelAI(tp,it){
@@ -1359,7 +1373,10 @@ function showTripItem(tid,iid){
   if(!ai){
     h+='<div class="card"><h4>AI が調査中</h4><p class="prose" style="font-size:12.5px">'+
       'この予定の天気・おすすめ観光スポット10選・移動時間・評価を調べています。'+
-      '数分で自動的にここに書き足されます（画面はそのままで大丈夫です）。</p></div>';
+      '数分で自動的にここに書き足されます（画面はそのままで大丈夫です）。</p>'+
+      '<p class="prose" style="font-size:12px;color:var(--dim);margin-top:8px">'+
+      'しばらく経っても届かないときは、下のボタンで依頼を送り直せます。</p>'+
+      '<button class="btn sec" id="tiRetry" style="margin-top:10px">調査を依頼し直す</button></div>';
   }else{
     var kv=[];
     if(ai.place)kv.push(['場所',ai.place]);
@@ -1389,10 +1406,20 @@ function showTripItem(tid,iid){
           '<span class="lnk-s">'+esc(String(sx.u).replace(/^https?:\/\//,''))+'</span></span></a>';
       }).join('')+'</div>';
     if(it.aiAt)h+='<div class="footn" style="text-align:left">AI が調べた日時: '+esc(it.aiAt)+'</div>';
+    h+='<button class="btn sec" id="tiRetry" style="margin-top:10px">AI にもう一度調べてもらう</button>';
   }
   dBody.innerHTML=h;dBody.scrollTop=0;
   det.classList.add('show');det.setAttribute('aria-hidden','false');
   bindDetail();
+  // 再調査。依頼が途中で消えて「調査中」のまま止まった予定の救済にもなる
+  var retry=document.getElementById('tiRetry');
+  if(retry)retry.onclick=function(){
+    if(!GH.hasToken()){notify('GitHub と連携していないため依頼を送れません。',true);return}
+    delete it.ai;delete it.aiAt;
+    saveTravel();askTravelAI(tp,it);buildTravelItems();
+    showTripItem(tp.id,it.id);
+    notify('AI に調査を依頼しました。数分でこのページに追記されます。');
+  };
 }
 /* 詳細パネルの中のボタン（年表の予定・追加）を配線する */
 function bindDetail(){
@@ -2891,9 +2918,19 @@ function loadAll(){
     if(res[4]&&res[4].entries)MONEY=res[4];
     else{try{MONEY=JSON.parse(localStorage.getItem('lifehub.money')||'null')||MONEY}catch(e){}}
     buildMoneyItems();
-    // travel.json はサイトと AI の両方が書く。取れない間は端末の控えで動く
-    if(res[5]&&res[5].trips)TRAVEL=res[5];
-    else{try{TRAVEL=JSON.parse(localStorage.getItem('lifehub.travel')||'null')||TRAVEL}catch(e){}}
+    // travel.json はサイトと AI の両方が書く。取れない間は端末の控えで動く。
+    // 前回の編集がサーバーに届いていない（dirty の印が残っている）ときは
+    // 端末の控えを正とし、リモートの AI 追記だけ取り込んでから送り直す
+    var localTravel=null,travelDirty=false;
+    try{localTravel=JSON.parse(localStorage.getItem('lifehub.travel')||'null')}catch(e){}
+    try{travelDirty=localStorage.getItem('lifehub.travelDirty')==='1'}catch(e){}
+    if(travelDirty&&localTravel&&localTravel.trips){
+      TRAVEL=localTravel;
+      mergeRemoteTravel(res[5]);
+      saveTravel();
+    }
+    else if(res[5]&&res[5].trips)TRAVEL=res[5];
+    else if(localTravel&&localTravel.trips)TRAVEL=localTravel;
     buildTravelItems();
     applyUserState();
     render();updateNotice();
