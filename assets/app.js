@@ -737,7 +737,7 @@ function renderHome(){
   function secStat(k){
     var xs=D.filter(function(x){return x.s===k&&!x.gone});
     var upd=((MANIFEST.sections||{})[k]||{}).updated||'';
-    var nw=newCount(k);
+    var nw=PAUSED[k]?0:newCount(k);  // 停止中は「新着」を数えない（ドット・バッジと揃える）
     if(k==='mail'){
       var un=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
       return [(un?'未読 '+un+' 件':'未読なし')+' · 全'+xs.length, upd||'—'];
@@ -1075,8 +1075,8 @@ function renderSupra(){
   var spec=all.filter(function(x){return x.id==='supra-spec'})[0];
   var h=PAUSED.supra?pausedNote():'';
   if(!all.length){
-    h+='<div class="empty">スープラのデータはまだありません。毎朝の自動更新で、'+
-      '買取相場・メンテナンス予定・ニュースがここに届きます。</div>';
+    h+='<div class="empty">スープラのデータはまだありません。'+
+      (PAUSED.supra?'':'毎朝の自動更新で、買取相場・メンテナンス予定・ニュースがここに届きます。')+'</div>';
     return {act:'',body:h};
   }
   // 買取相場（現在値 + 推移グラフ + AI の見立て）
@@ -1174,7 +1174,7 @@ function renderFashion(){
   if(!all.length){
     return {act:'',body:(PAUSED.fashion?pausedNote():'')+
       '<div class="empty">ファッションのデータはまだありません。'+
-      '毎朝の自動更新で、いま来ているトレンド・今買えるアイテム・参考動画がここに届きます。</div>'};
+      (PAUSED.fashion?'':'毎朝の自動更新で、いま来ているトレンド・今買えるアイテム・参考動画がここに届きます。')+'</div>'};
   }
   var of=function(k){return all.filter(function(x){return x.kind===k})};
   var briefs=of('brief').sort(byTimeDesc);
