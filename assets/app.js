@@ -41,6 +41,16 @@ var SEC=[{k:'mail',n:'メール'},{k:'schedule',n:'予定'},{k:'anime',n:'アニ
   {k:'fashion',n:'ファッション'},{k:'workout',n:'筋トレ'},{k:'travel',n:'旅行'},{k:'money',n:'収支'},{k:'news',n:'ニュース'},{k:'search',n:'検索'}];
 function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.length;i++)if(SEC[i].k===k)return SEC[i].n;return k}
 
+/* GitHub 側の定期実行（cron）を止めているセクション。サイトからは GitHub の
+ * cron 状態を取得できないため、パイプラインの workflows を止めたり再開したり
+ * したらここも手で合わせる。載せるとタイルとメニューがグレーアウトし、
+ * セクションの先頭に停止中の説明が出る。中身の閲覧は止めない。 */
+var PAUSED={supra:1,fashion:1,news:1};
+function pausedNote(){
+  return '<div class="pnote">自動更新は停止中です。GitHub の定期実行を止めているため、'+
+    '表示は最後に取得した内容のままです。</div>';
+}
+
 var TODAY=new Date();  // 実際の今日。予定の60日表示とトップの日付に使う
 /* 祝日は life-content から配信される（vault の holidays.md ＋ 公開API）。
  * ここに直書きすると期間外が抜けるため、既定は空にしておく。 */
@@ -727,7 +737,7 @@ function renderHome(){
   function secStat(k){
     var xs=D.filter(function(x){return x.s===k&&!x.gone});
     var upd=((MANIFEST.sections||{})[k]||{}).updated||'';
-    var nw=newCount(k);
+    var nw=PAUSED[k]?0:newCount(k);  // 停止中は「新着」を数えない（ドット・バッジと揃える）
     if(k==='mail'){
       var un=D.filter(function(x){return x.s==='mail'&&x.unread}).length;
       return [(un?'未読 '+un+' 件':'未読なし')+' · 全'+xs.length, upd||'—'];
@@ -801,9 +811,13 @@ function renderHome(){
   }
   SEC.forEach(function(s){
     var m=secStat(s.k);
-    h+='<button class="tile" data-sec="'+s.k+'">'+(newCount(s.k)?'<span class="dot"></span>':'')+
-      '<span class="tp">'+ic(s.k,'ico')+'</span><span class="nm">'+s.n+'</span>'+
-      '<span class="mt">'+m[0]+'</span><span class="ft">'+m[1]+'</span></button>';
+    // 停止中は新着ドットよりバッジを優先（位置が重なるのと、新着はもう来ない）
+    h+='<button class="tile'+(PAUSED[s.k]?' paused':'')+'" data-sec="'+s.k+'">'+
+      (!PAUSED[s.k]&&newCount(s.k)?'<span class="dot"></span>':'')+
+      '<span class="tp">'+ic(s.k,'ico')+(PAUSED[s.k]?'<span class="pz">停止中</span>':'')+'</span>'+
+      '<span class="nm">'+s.n+'</span>'+
+      '<span class="mt">'+m[0]+'</span>'+
+      '<span class="ft">'+(PAUSED[s.k]?'自動更新 停止中':m[1])+'</span></button>';
   });
   h+='<button class="tile" data-sec="nearby">'+
     '<span class="tp">'+ic('pin','ico')+'</span><span class="nm">近くのスポット</span>'+
@@ -1013,7 +1027,8 @@ function renderNews(){
     return '<button class="seg '+(cur===c[0]?'on':'')+'" data-seg="news:'+c[0]+'">'+c[1]+'</button>'}).join('')+'</div>';
   var items=sortItems(D.filter(function(x){return x.s==='news'&&match(x)&&
     (cur==='all'||(cur==='story'?x.story:x.cat===cur))}),'news');
-  var h='<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
+  var h=(PAUSED.news?pausedNote():'')+
+    '<div class="list">'+items.map(function(x){return rowHTML(x,D.indexOf(x))}).join('')+'</div>';
   if(!items.length)h+='<div class="empty">該当するニュースはありません</div>';
   var stories=D.filter(function(x){return x.s==='news'&&x.story}).length;
   var updated=((MANIFEST.sections||{}).news||{}).updated||'—';
@@ -1058,10 +1073,10 @@ function renderSupra(){
   var news=all.filter(function(x){return String(x.id||'').indexOf('supra-news-')===0})
     .sort(byTimeDesc);
   var spec=all.filter(function(x){return x.id==='supra-spec'})[0];
-  var h='';
+  var h=PAUSED.supra?pausedNote():'';
   if(!all.length){
-    h+='<div class="empty">スープラのデータはまだありません。毎朝の自動更新で、'+
-      '買取相場・メンテナンス予定・ニュースがここに届きます。</div>';
+    h+='<div class="empty">スープラのデータはまだありません。'+
+      (PAUSED.supra?'':'毎朝の自動更新で、買取相場・メンテナンス予定・ニュースがここに届きます。')+'</div>';
     return {act:'',body:h};
   }
   // 買取相場（現在値 + 推移グラフ + AI の見立て）
@@ -1157,14 +1172,15 @@ function itemCards(list){
 function renderFashion(){
   var all=D.filter(function(x){return x.s==='fashion'&&match(x)});
   if(!all.length){
-    return {act:'',body:'<div class="empty">ファッションのデータはまだありません。'+
-      '毎朝の自動更新で、いま来ているトレンド・今買えるアイテム・参考動画がここに届きます。</div>'};
+    return {act:'',body:(PAUSED.fashion?pausedNote():'')+
+      '<div class="empty">ファッションのデータはまだありません。'+
+      (PAUSED.fashion?'':'毎朝の自動更新で、いま来ているトレンド・今買えるアイテム・参考動画がここに届きます。')+'</div>'};
   }
   var of=function(k){return all.filter(function(x){return x.kind===k})};
   var briefs=of('brief').sort(byTimeDesc);
   var trends=of('trend').sort(byTimeDesc);
   var items=of('item'),vids=of('video').sort(byTimeDesc);
-  var h='';
+  var h=PAUSED.fashion?pausedNote():'';
   // 今日のまとめ（本文をそのまま読ませる。タップで過去分も見られる）
   if(briefs.length){
     var b=briefs[0],bd=b.d||{};
@@ -2827,8 +2843,8 @@ function renderMenu(){
     ic('grid')+'ダッシュボード</button><div class="mg">セクション</div>';
   SEC.forEach(function(s){
     var c=newCount(s.k);
-    mh+='<button class="mi'+(view===s.k?' on':'')+'" data-f="'+s.k+'">'+ic(s.k)+esc(s.n)+
-      (c?'<span class="ct">'+c+'</span>':'')+'</button>';
+    mh+='<button class="mi'+(view===s.k?' on':'')+(PAUSED[s.k]?' paused':'')+'" data-f="'+s.k+'">'+ic(s.k)+esc(s.n)+
+      (PAUSED[s.k]?'<span class="mp">停止中</span>':(c?'<span class="ct">'+c+'</span>':''))+'</button>';
   });
   mh+='<button class="mi'+(view==='nearby'?' on':'')+'" data-f="nearby">'+ic('pin')+'近くのスポット</button>';
   mh+='<div class="mg">アプリ</div><button class="mi" id="miMemento">'+ic('memento')+'MEMENTO</button>'+
