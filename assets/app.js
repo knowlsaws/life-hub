@@ -45,7 +45,7 @@ function sn(k){if(k==='nearby')return '近くのスポット';for(var i=0;i<SEC.
  * cron 状態を取得できないため、パイプラインの workflows を止めたり再開したり
  * したらここも手で合わせる。載せるとタイルとメニューがグレーアウトし、
  * セクションの先頭に停止中の説明が出る。中身の閲覧は止めない。 */
-var PAUSED={supra:1,fashion:1,news:1};
+var PAUSED={supra:1,fashion:1,news:1,mail:1};
 function pausedNote(){
   return '<div class="pnote">自動更新は停止中です。GitHub の定期実行を止めているため、'+
     '表示は最後に取得した内容のままです。</div>';
@@ -859,7 +859,8 @@ function renderMail(){
     '<button class="seg '+(mailRead?'on':'')+'" data-mail="1">既読も表示</button></div>'+
     '<div class="actbar"><button class="act" data-mailall="read">すべて既読にする</button>'+
     '<button class="act" data-mailall="unread">すべて未読に戻す</button></div>';
-  var h='<div class="list">'+(items.length?items.map(function(x){return rowHTML(x,D.indexOf(x))}).join(''):'')+'</div>';
+  var h=(PAUSED.mail?pausedNote():'')+
+    '<div class="list">'+(items.length?items.map(function(x){return rowHTML(x,D.indexOf(x))}).join(''):'')+'</div>';
   if(!items.length)h+='<div class="empty">該当するメールはありません</div>';
   return {act:act,body:h};
 }
